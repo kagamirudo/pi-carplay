@@ -219,3 +219,18 @@ json_field() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(eval("
   run "$UPDATE" check --bogus
   [ "$status" -eq 2 ]
 }
+
+@test "a missing digest leaves the url and release_url in place (exit 10)" {
+  dl=https://example.invalid/download/v0.2.0
+  cat > "$API/releases/latest.json" <<EOF
+{"tag_name": "v0.2.0", "draft": false, "prerelease": false, "published_at": "2026-10-29T06:46:59Z",
+ "html_url": "https://example.invalid/releases/tag/v0.2.0",
+ "assets": [
+  {"name": "pi-carplay_0.2.0_arm64.deb", "size": 774740,
+   "browser_download_url": "$dl/pi-carplay_0.2.0_arm64.deb"}]}
+EOF
+  run "$UPDATE" check --json
+  [ "$status" -eq 10 ]
+  [ "$(json_field '["asset"]["url"]' <<< "$output")" = https://example.invalid/download/v0.2.0/pi-carplay_0.2.0_arm64.deb ]
+  [ "$(json_field '["release_url"]' <<< "$output")" = https://example.invalid/releases/tag/v0.2.0 ]
+}

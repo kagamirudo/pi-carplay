@@ -125,7 +125,7 @@ with open(body, encoding="utf-8") as f:
     data = json.load(f)
 releases = data if isinstance(data, list) else [data]
 pattern = re.compile(r"^%s_(.+)_%s\.deb$" % (re.escape(pkg), re.escape(arch)))
-clean = lambda v: re.sub(r"[\t\n\r]", " ", str(v or ""))
+clean = lambda v: re.sub(r"[\t\n\r\x1f]", " ", str(v or ""))
 for r in releases:
     if not isinstance(r, dict) or r.get("draft") or (r.get("prerelease") and channel == "stable"):
         continue
@@ -133,7 +133,7 @@ for r in releases:
         m = pattern.match(a.get("name") or "")
         digest = a.get("digest") or ""
         if m and a.get("browser_download_url"):
-            print("\t".join(clean(x) for x in (
+            print("\x1f".join(clean(x) for x in (
                 m.group(1), "true" if r.get("prerelease") else "false", r.get("published_at"), a["name"],
                 int(a.get("size") or 0), digest[7:] if digest.startswith("sha256:") else "",
                 a["browser_download_url"], r.get("html_url"))))
@@ -144,7 +144,7 @@ then
 fi
 
 # The newest version wins, whatever order the server listed them in.
-while IFS=$'\t' read -r v pre pub name size sha url page; do
+while IFS=$'\x1f' read -r v pre pub name size sha url page; do
   if [ -z "$LATEST" ] || dpkg --compare-versions "$v" gt "$LATEST"; then
     LATEST=$v PRERELEASE=$pre PUBLISHED=$pub ASSET=$name SIZE=$size SHA256=$sha ASSET_URL=$url RELEASE_URL=$page
   fi

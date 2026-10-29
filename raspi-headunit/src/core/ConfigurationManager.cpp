@@ -391,6 +391,27 @@ bool readInt(const Json& object, const char* key, const char* path, int* dest, i
     return true;
 }
 
+// Like readInt but accepts negative values (readUint rejects them).
+bool readIntSigned(const Json& object, const char* key, const char* path, int* dest, int minValue,
+                   int maxValue, std::string* error) {
+    const Json* value = field(object, key);
+    if (!value) {
+        return true;
+    }
+    if (value->type != Json::Type::Number) {
+        *error = std::string(path) + " must be a number";
+        return false;
+    }
+    const long long v = value->negative ? -static_cast<long long>(value->number)
+                                         : static_cast<long long>(value->number);
+    if (v < minValue || v > maxValue) {
+        *error = std::string(path) + " is out of range";
+        return false;
+    }
+    *dest = static_cast<int>(v);
+    return true;
+}
+
 void escape(std::ostream& out, const std::string& text) {
     for (unsigned char c : text) {
         switch (c) {
@@ -445,7 +466,11 @@ ParseResult ConfigurationManager::parse(std::string_view text) {
             !readInt(*display, "width", "display.width", &config.display.width, 1, 8192, &error) ||
             !readInt(*display, "height", "display.height", &config.display.height, 1, 8192, &error) ||
             !readString(*display, "output", "display.output", &config.display.output, &error) ||
-            !readBool(*display, "fullscreen", "display.fullscreen", &config.display.fullscreen, &error)) {
+            !readBool(*display, "fullscreen", "display.fullscreen", &config.display.fullscreen, &error) ||
+            !readIntSigned(*display, "brightness", "display.brightness", &config.display.brightness, -100, 100, &error) ||
+            !readIntSigned(*display, "contrast", "display.contrast", &config.display.contrast, -100, 100, &error) ||
+            !readIntSigned(*display, "hue", "display.hue", &config.display.hue, -180, 180, &error) ||
+            !readIntSigned(*display, "saturation", "display.saturation", &config.display.saturation, -100, 100, &error)) {
             result.error = error;
             return result;
         }
@@ -507,7 +532,11 @@ std::string ConfigurationManager::serialize(const AppConfig& config) {
     out << "    \"output\": \"";
     escape(out, config.display.output);
     out << "\",\n";
-    out << "    \"fullscreen\": " << (config.display.fullscreen ? "true" : "false") << "\n";
+    out << "    \"fullscreen\": " << (config.display.fullscreen ? "true" : "false") << ",\n";
+    out << "    \"brightness\": " << config.display.brightness << ",\n";
+    out << "    \"contrast\": " << config.display.contrast << ",\n";
+    out << "    \"hue\": " << config.display.hue << ",\n";
+    out << "    \"saturation\": " << config.display.saturation << "\n";
     out << "  },\n";
     out << "  \"dashcam\": {\n";
     out << "    \"enabled\": " << (config.dashcam.enabled ? "true" : "false") << ",\n";

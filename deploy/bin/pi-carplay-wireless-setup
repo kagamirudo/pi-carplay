@@ -1,0 +1,214 @@
+#!/bin/bash
+# Prepare this Pi for wireless Android Auto. Run as the desktop user (uses sudo).
+#
+#   pi-carplay-wireless-setup [options]
+#
+#   --dry-run         print what would change, change nothing
+#   --adapter ADDR    Bluetooth controller for the phone (default: the first USB adapter)
+#   --ssid NAME       hotspot name (default: PiCarPlay)
+#   --channel N       5 GHz channel: 36 40 44 48 149 153 157 161 165 (default: 36)
+#   --no-firmware     do not install firmware-realtek
+#   --remove          delete the hotspot profile and the saved settings
+#
+# It installs firmware-realtek if missing, records the phone's Bluetooth adapter,
+# and writes a NetworkManager hotspot profile with autoconnect off. It never starts
+# the hotspot and never touches the current Wi-Fi connection. Safe to run again:
+# the hotspot password and profile UUID are kept.
+set -euo pipefail
+
+CONF=${WIRELESS_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-carplay/wireless.conf}
+NM_DIR=${NM_CONN_DIR:-/etc/NetworkManager/system-connections}
+SYS_BT=${SYS_BT:-/sys/class/bluetooth}
+WIFI_IF=${WIFI_IF:-wlan0}
+CONNECTION=pi-carplay-aa
+HOTSPOT_ADDRESS=10.42.0.1
+AA_PORT=5000
+CHANNELS="36 40 44 48 149 153 157 161 165"
+
+DRY_RUN=0
+FIRMWARE=1
+REMOVE=0
+ADAPTER=""
+SSID=""
+CHANNEL=""
+
+die() { echo "pi-carplay-wireless-setup: $*" >&2; exit 1; }
+say() { echo ">> $*"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1 ;;
+    --no-firmware) FIRMWARE=0 ;;
+    --remove) REMOVE=1 ;;
+    --adapter) ADAPTER=${2:?--adapter needs an address}; shift ;;
+    --ssid) SSID=${2:?--ssid needs a name}; shift ;;
+    --channel) CHANNEL=${2:?--channel needs a number}; shift ;;
+    -h|--help) sed -n '2,17s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    *) die "unknown option: $1 (see --help)" ;;
+  esac
+  shift
+done
+
+[ "$(id -u)" -ne 0 ] || die "run as the desktop user, not root; it calls sudo where needed"
+
+# Run a command that changes the system, or show it under --dry-run.
+run() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "   would run: $*"
+  else
+    "$@"
+  fi
+}
+
+# ---------------------------------------------------------------- remove
+
+KEYFILE=$NM_DIR/$CONNECTION.nmconnection
+if [ "$REMOVE" -eq 1 ]; then
+  if sudo test -e "$KEYFILE"; then
+    say "deleting hotspot profile $CONNECTION"
+    run sudo rm -f "$KEYFILE"
+    run sudo nmcli connection reload
+  fi
+  [ -e "$CONF" ] && { say "deleting $CONF"; run rm -f "$CONF"; }
+  say "done"
+  exit 0
+fi
+
+# ---------------------------------------------------------------- settings
+
+saved() { [ -r "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | tail -n1; }
+[ -n "$ADAPTER" ] || ADAPTER=$(saved ADAPTER || true)
+[ -n "$SSID" ] || SSID=$(saved SSID || true)
+[ -n "$CHANNEL" ] || CHANNEL=$(saved CHANNEL || true)
+SSID=${SSID:-PiCarPlay}
+CHANNEL=${CHANNEL:-36}
+
+ADAPTER=$(printf '%s' "$ADAPTER" | tr 'a-f' 'A-F')
+if [ -n "$ADAPTER" ] && ! [[ "$ADAPTER" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]]; then
+  die "--adapter must look like AA:BB:CC:DD:EE:FF"
+fi
+if [ "${#SSID}" -gt 32 ] || [[ "$SSID" =~ [[:cntrl:]] ]] || [[ "$SSID" == *[=\;\#]* ]]; then
+  die "--ssid must be 1-32 printable characters without = ; or #"
+fi
+[[ " $CHANNELS " == *" $CHANNEL "* ]] || die "--channel must be one of: $CHANNELS"
+
+# ---------------------------------------------------------------- firmware
+
+if [ "$FIRMWARE" -eq 1 ]; then
+  if [ "$(dpkg-query -W -f='${Status}' firmware-realtek 2>/dev/null || true)" = "install ok installed" ]; then
+    say "firmware-realtek already installed"
+  else
+    say "installing firmware-realtek (Realtek RTL8761BU firmware for the TP-Link UB500)"
+    run sudo apt-get install -y firmware-realtek
+  fi
+fi
+
+# ---------------------------------------------------------------- Bluetooth adapter
+
+if [ -z "$ADAPTER" ]; then
+  for h in "$SYS_BT"/hci*; do
+    [ -e "$h" ] || continue
+    dev=$(readlink -f "$h/device" 2>/dev/null || true)
+    if [ -z "$dev" ] || [ ! -r "$dev/../idVendor" ]; then
+      continue
+    fi
+    ADAPTER=$(hciconfig "$(basename "$h")" 2>/dev/null | sed -n 's/.*BD Address: \([0-9A-F:]\{17\}\).*/\1/p')
+    [ -n "$ADAPTER" ] && { say "phone adapter: USB controller $(basename "$h")"; break; }
+  done
+fi
+[ -n "$ADAPTER" ] || say "no USB Bluetooth adapter found; run this again after plugging the dongle in"
+
+# ---------------------------------------------------------------- saved settings
+
+settings=$(cat <<EOF
+# Written by pi-carplay-wireless-setup. The hotspot password lives only in
+# the NetworkManager profile ($KEYFILE).
+ADAPTER=$ADAPTER
+SSID=$SSID
+CHANNEL=$CHANNEL
+CONNECTION=$CONNECTION
+ADDRESS=$HOTSPOT_ADDRESS
+PORT=$AA_PORT
+EOF
+)
+if [ -r "$CONF" ] && [ "$(cat "$CONF")" = "$settings" ]; then
+  say "$CONF unchanged"
+else
+  say "writing $CONF"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '%s\n' "$settings" | sed 's/^/   | /'
+  else
+    mkdir -p "$(dirname "$CONF")"
+    printf '%s\n' "$settings" > "$CONF.tmp"
+    mv "$CONF.tmp" "$CONF"
+  fi
+fi
+
+# ---------------------------------------------------------------- hotspot profile
+
+props=$(nmcli -t -f WIFI-PROPERTIES.AP,WIFI-PROPERTIES.5GHZ device show "$WIFI_IF" 2>/dev/null || true)
+if ! printf '%s\n' "$props" | grep -q 'AP:yes' || ! printf '%s\n' "$props" | grep -q '5GHZ:yes'; then
+  die "NetworkManager reports no 5 GHz access point support on $WIFI_IF"
+fi
+
+existing() { sudo sed -n "s/^$1=//p" "$KEYFILE" 2>/dev/null | head -n1; }
+PSK=""
+UUID=""
+if sudo test -e "$KEYFILE"; then
+  PSK=$(existing psk)
+  UUID=$(existing uuid)
+fi
+[ -n "$PSK" ] || PSK=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-20)
+[ -n "$UUID" ] || UUID=$(cat /proc/sys/kernel/random/uuid)
+
+profile() {
+  cat <<EOF
+[connection]
+id=$CONNECTION
+uuid=$UUID
+type=wifi
+interface-name=$WIFI_IF
+autoconnect=false
+
+[wifi]
+mode=ap
+band=a
+channel=$CHANNEL
+ssid=$SSID
+
+[wifi-security]
+key-mgmt=wpa-psk
+proto=rsn;
+pairwise=ccmp;
+group=ccmp;
+psk=$1
+
+[ipv4]
+method=shared
+address1=$HOTSPOT_ADDRESS/24
+
+[ipv6]
+method=disabled
+EOF
+}
+
+if sudo test -e "$KEYFILE" && [ "$(sudo cat "$KEYFILE")" = "$(profile "$PSK")" ]; then
+  say "hotspot profile $CONNECTION unchanged"
+else
+  say "writing hotspot profile $CONNECTION ($SSID, 5 GHz channel $CHANNEL, autoconnect off)"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    profile '********' | sed 's/^/   | /'
+    echo "   would run: sudo nmcli connection load $KEYFILE"
+  else
+    profile "$PSK" | sudo sh -c 'umask 077; mkdir -p "$(dirname "$1")"; cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$KEYFILE"
+    sudo nmcli connection load "$KEYFILE"
+  fi
+fi
+
+echo
+if [ "$DRY_RUN" -eq 1 ]; then
+  say "dry run: nothing was changed"
+else
+  say "prepared, nothing started. Check with: pi-carplay-wireless-check"
+fi
+say "to try the hotspot (drops a Wi-Fi client connection on $WIFI_IF): nmcli connection up $CONNECTION"

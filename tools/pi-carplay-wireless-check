@@ -1,0 +1,287 @@
+#!/bin/bash
+# Check whether this Pi is ready for wireless Android Auto: Bluetooth controllers
+# (onboard and USB, such as a TP-Link UB500), their firmware, a 5 GHz access point
+# on wlan0, the regulatory country, NetworkManager and the projection ports.
+# Read-only: it changes nothing on the system.
+#
+#   pi-carplay-wireless-check                  exit 1 if any check fails
+#   pi-carplay-wireless-check --no-fail        report only
+#   pi-carplay-wireless-check --show-addresses print full Bluetooth addresses
+#
+# Each line is PASS, WARN (works, but look at it) or FAIL (fix it first).
+set -u
+
+NO_FAIL=0
+SHOW_ADDR=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-fail) NO_FAIL=1 ;;
+    --show-addresses) SHOW_ADDR=1 ;;
+    -h|--help) sed -n '2,11s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+SYS_BT=${SYS_BT:-/sys/class/bluetooth}
+SYS_NET=${SYS_NET:-/sys/class/net}
+FIRMWARE_DIR=${FIRMWARE_DIR:-/lib/firmware}
+WIFI_IF=${WIFI_IF:-wlan0}
+WIRELESS_CONF=${WIRELESS_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-carplay/wireless.conf}
+AA_PORT=${AA_PORT:-5000}
+PROXY_PORT=${PROXY_PORT:-5288}
+
+# Settings written by pi-carplay-wireless-setup.
+ADAPTER=""
+CHANNEL=""
+CONNECTION=pi-carplay-aa
+if [ -r "$WIRELESS_CONF" ]; then
+  ADAPTER=$(sed -n 's/^ADAPTER=//p' "$WIRELESS_CONF" | tail -n1)
+  CHANNEL=$(sed -n 's/^CHANNEL=//p' "$WIRELESS_CONF" | tail -n1)
+  c=$(sed -n 's/^CONNECTION=//p' "$WIRELESS_CONF" | tail -n1)
+  [ -n "$c" ] && CONNECTION=$c
+fi
+
+fails=0
+warns=0
+pass() { printf 'PASS  %s\n' "$*"; }
+warn() { printf 'WARN  %s\n' "$*"; warns=$((warns + 1)); }
+fail() { printf 'FAIL  %s\n' "$*"; fails=$((fails + 1)); }
+section() { printf '\n== %s\n' "$*"; }
+
+mask() {
+  if [ "$SHOW_ADDR" -eq 1 ]; then echo "$1"; else echo "XX:XX:XX:XX:${1:12:5}"; fi
+}
+
+kernel_log() {
+  journalctl -k -b -q --no-pager 2>/dev/null || dmesg 2>/dev/null || true
+}
+KLOG=$(kernel_log)
+
+# True when the btusb module's quirk table has VID:PID (a struct usb_device_id
+# matched on vendor and product), so btusb loads the vendor firmware for it.
+btusb_knows() {
+  local vid=$1 pid=$2 mod pattern
+  mod=$(modinfo -n btusb 2>/dev/null) || return 2
+  [ -r "$mod" ] || return 2
+  pattern=$(printf '\\x03\\x00\\x%s\\x%s\\x%s\\x%s' "${vid:2:2}" "${vid:0:2}" "${pid:2:2}" "${pid:0:2}")
+  case "$mod" in
+    *.xz) xzcat "$mod" ;;
+    *.zst) zstdcat "$mod" ;;
+    *.gz) zcat "$mod" ;;
+    *) cat "$mod" ;;
+  esac 2>/dev/null | LC_ALL=C grep -qaP "$pattern"
+}
+
+firmware_present() {
+  local f
+  for f in "$@"; do
+    compgen -G "$FIRMWARE_DIR/$f*" > /dev/null || return 1
+  done
+}
+
+# Known USB Bluetooth adapters: vid:pid|name|chipset|firmware files (space separated, may be empty).
+KNOWN_ADAPTERS="2357:0604|TP-Link UB500 / UB500 Plus / UB5A|Realtek RTL8761BU|rtl_bt/rtl8761bu_fw.bin rtl_bt/rtl8761bu_config.bin
+0bda:8771|Realtek RTL8761BU (generic)|Realtek RTL8761BU|rtl_bt/rtl8761bu_fw.bin rtl_bt/rtl8761bu_config.bin
+0a12:0001|TP-Link UB400 / UB4A (or another CSR dongle)|CSR8510 A10, Bluetooth 4.0|
+37ad:0600|TP-Link UB600|Realtek RTL8761BUV|rtl_bt/rtl8761bu_fw.bin rtl_bt/rtl8761bu_config.bin"
+
+lookup() {
+  printf '%s\n' "$KNOWN_ADAPTERS" | awk -F'|' -v id="$1" '$1 == id'
+}
+
+# ---------------------------------------------------------------- what to buy
+
+section "Adapters this system can drive"
+pkg=$(dpkg-query -W -f='${Version}' firmware-realtek 2>/dev/null || true)
+if [ -n "$pkg" ]; then
+  pass "firmware-realtek $pkg installed"
+else
+  warn "firmware-realtek not installed (pi-carplay-wireless-setup installs it)"
+fi
+while IFS='|' read -r id name chip files; do
+  [ "$id" = 0bda:8771 ] && continue
+  vid=${id%:*}
+  pid=${id#*:}
+  # shellcheck disable=SC2086  # files is a word list
+  if [ -z "$files" ]; then
+    pass "$name ($id, $chip): generic btusb, no firmware needed"
+  elif btusb_knows "$vid" "$pid"; then
+    if firmware_present $files; then
+      pass "$name ($id, $chip): btusb knows it, firmware present"
+    else
+      fail "$name ($id, $chip): btusb knows it, but $files missing from $FIRMWARE_DIR"
+    fi
+  elif [ $? -eq 2 ]; then
+    warn "$name ($id, $chip): cannot read the btusb module to check"
+  else
+    warn "$name ($id, $chip): this kernel's btusb does not know it, so its firmware never loads (do not buy)"
+  fi
+done < <(printf '%s\n' "$KNOWN_ADAPTERS")
+
+for m in btusb btrtl rfcomm; do
+  if modinfo -n "$m" > /dev/null 2>&1; then
+    pass "kernel module $m available"
+  else
+    fail "kernel module $m missing"
+  fi
+done
+
+# ---------------------------------------------------------------- controllers
+
+section "Bluetooth controllers"
+onboard=""
+usb=""
+adapter_found=0
+for h in "$SYS_BT"/hci*; do
+  [ -e "$h" ] || continue
+  case "$(basename "$h")" in *:*) continue ;; esac
+  hci=$(basename "$h")
+  dev=$(readlink -f "$h/device" 2>/dev/null || true)
+  addr=$(hciconfig "$hci" 2>/dev/null | sed -n 's/.*BD Address: \([0-9A-F:]\{17\}\).*/\1/p')
+  [ -n "$addr" ] && [ "$addr" = "$ADAPTER" ] && adapter_found=1
+  shown=${addr:+ $(mask "$addr")}
+  if [ -n "$dev" ] && [ -r "$dev/../idVendor" ]; then
+    id="$(cat "$dev/../idVendor"):$(cat "$dev/../idProduct")"
+    usb="$usb $hci"
+    entry=$(lookup "$id")
+    if [ -z "$entry" ]; then
+      warn "$hci$shown: USB $id, not a tested adapter (works if btusb drives it; see docs/wireless.md)"
+      continue
+    fi
+    IFS='|' read -r _ name chip files <<< "$entry"
+    if [ -z "$files" ]; then
+      pass "$hci$shown: USB $id $name ($chip)"
+      continue
+    fi
+    last=$(printf '%s\n' "$KLOG" | grep -E "Bluetooth: $hci: RTL: (fw version|download fw command failed|firmware file .* not found)" | tail -n1)
+    case "$last" in
+      *"fw version"*) pass "$hci$shown: USB $id $name ($chip), firmware loaded (${last##*fw version })" ;;
+      *"not found"*) fail "$hci$shown: USB $id $name: firmware file missing; install firmware-realtek and replug" ;;
+      *failed*) fail "$hci$shown: USB $id $name: firmware download failed; replug it, update the bootloader (rpi-eeprom-update)" ;;
+      *) warn "$hci$shown: USB $id $name ($chip): no firmware load in the kernel log (replug, then check again)" ;;
+    esac
+  else
+    onboard="$onboard $hci"
+    pass "$hci$shown: onboard (UART), the Pi 5's CYW43455"
+  fi
+done
+
+if [ -z "$onboard$usb" ]; then
+  fail "no Bluetooth controller (is bluetooth disabled with dtoverlay=disable-bt and no dongle plugged in?)"
+elif [ -z "$usb" ]; then
+  warn "no USB Bluetooth adapter plugged in; the onboard controller would have to serve the phone and the car stereo"
+fi
+if [ -n "$onboard" ] && [[ "$usb " == *" hci0 "* ]]; then
+  warn "hci0 is the USB adapter; the shell lists car-stereo devices on hci0, so the onboard controller is unused"
+fi
+
+if [ -z "$ADAPTER" ]; then
+  warn "no phone adapter chosen yet (run pi-carplay-wireless-setup once the dongle is plugged in)"
+elif [ "$adapter_found" -eq 1 ]; then
+  pass "phone adapter $(mask "$ADAPTER") is present"
+else
+  fail "phone adapter $(mask "$ADAPTER") from $WIRELESS_CONF is not plugged in"
+fi
+
+if systemctl is-active --quiet bluetooth 2>/dev/null; then
+  pass "bluetooth.service running ($(bluetoothctl --version 2>/dev/null || echo 'version unknown'))"
+else
+  fail "bluetooth.service is not running"
+fi
+
+if command -v vcgencmd > /dev/null && [ -n "$usb" ]; then
+  ts=$(vcgencmd bootloader_version 2>/dev/null | sed -n 's/^timestamp \([0-9]*\).*/\1/p')
+  if [ -n "$ts" ] && [ "$ts" -lt 1735689600 ]; then
+    warn "bootloader older than 2025: Realtek dongles can fail to load firmware on a Pi 5 (sudo rpi-eeprom-update -a)"
+  fi
+fi
+
+# ---------------------------------------------------------------- Wi-Fi
+
+section "Wi-Fi access point ($WIFI_IF)"
+IWLIST=$(iw list 2>/dev/null || true)
+command -v iw > /dev/null || fail "iw not installed (sudo apt install iw); the checks below cannot see the Wi-Fi chip"
+if [ ! -e "$SYS_NET/$WIFI_IF" ]; then
+  fail "$WIFI_IF missing (Wi-Fi disabled with dtoverlay=disable-wifi or rfkill?)"
+fi
+
+if printf '%s\n' "$IWLIST" | sed -n '/Supported interface modes/,/Band/p' | grep -qE '^\s+\* AP$'; then
+  pass "access point mode supported"
+else
+  fail "access point mode not supported by the Wi-Fi driver"
+fi
+
+# Channels that are enabled and need no radar detection or initiate-radiation ban.
+usable=$(printf '%s\n' "$IWLIST" | grep -E '^\s+\* 5[0-9]{3}(\.[0-9])? MHz \[[0-9]+\]' |
+  grep -vE 'disabled|no IR|radar' | sed -E 's/.*\[([0-9]+)\].*/\1/' | sort -nu | paste -sd' ' -)
+if [ -n "$usable" ]; then
+  pass "5 GHz channels without radar detection: $usable"
+else
+  fail "no usable 5 GHz channel (wireless Android Auto needs 5 GHz)"
+fi
+if [ -n "$CHANNEL" ]; then
+  if [[ " $usable " == *" $CHANNEL "* ]]; then
+    pass "hotspot channel $CHANNEL is usable here"
+  else
+    fail "hotspot channel $CHANNEL is not usable here (pick one of: $usable)"
+  fi
+fi
+
+country=$(iw reg get 2>/dev/null | awk '/^global/ {g = 1; next} g && /^country/ {sub(":", "", $2); print $2; exit}')
+case "$country" in
+  "") warn "regulatory country unknown (iw reg get gave no answer)" ;;
+  00) fail "regulatory country not set; set it with raspi-config (Localisation, WLAN country)" ;;
+  *) pass "regulatory country $country" ;;
+esac
+
+if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+  pass "NetworkManager running"
+  props=$(nmcli -t -f WIFI-PROPERTIES.AP,WIFI-PROPERTIES.5GHZ device show "$WIFI_IF" 2>/dev/null || true)
+  if printf '%s\n' "$props" | grep -q 'AP:yes' && printf '%s\n' "$props" | grep -q '5GHZ:yes'; then
+    pass "NetworkManager can run a 5 GHz hotspot on $WIFI_IF"
+  else
+    fail "NetworkManager does not report AP and 5 GHz support for $WIFI_IF"
+  fi
+  if nmcli -t -f NAME connection show 2>/dev/null | grep -qxF "$CONNECTION"; then
+    pass "hotspot profile '$CONNECTION' prepared"
+  else
+    warn "hotspot profile '$CONNECTION' not prepared (pi-carplay-wireless-setup creates it)"
+  fi
+  state=$(nmcli -t -f DEVICE,STATE,CONNECTION device 2>/dev/null | awk -F: -v d="$WIFI_IF" '$1 == d {print $2 ":" $3}')
+  case "$state" in
+    connected:"$CONNECTION") pass "hotspot '$CONNECTION' is active" ;;
+    connected:*) warn "$WIFI_IF is a Wi-Fi client right now; starting the hotspot drops that connection" ;;
+  esac
+else
+  fail "NetworkManager is not running (the hotspot profile needs it)"
+fi
+
+if command -v dnsmasq > /dev/null; then
+  pass "dnsmasq present (DHCP for the phone)"
+else
+  fail "dnsmasq missing (install dnsmasq-base; NetworkManager's shared mode needs it)"
+fi
+if systemctl is-active --quiet hostapd 2>/dev/null; then
+  warn "hostapd.service is running and will fight NetworkManager for $WIFI_IF"
+fi
+
+# ---------------------------------------------------------------- projection
+
+section "Projection"
+listener=$(ss -ltnpH "sport = :$AA_PORT" 2>/dev/null || true)
+case "$listener" in
+  *'"autoapp"'*) pass "autoapp listens for wireless sessions on TCP $AA_PORT" ;;
+  "") warn "nothing listens on TCP $AA_PORT (autoapp not running?)" ;;
+  *) fail "TCP $AA_PORT is taken by another program: $(printf '%s' "$listener" | grep -o 'users:.*')" ;;
+esac
+if [ -n "$(ss -ltnH "sport = :$PROXY_PORT" 2>/dev/null)" ]; then
+  warn "TCP $PROXY_PORT (used by WirelessAndroidAutoDongle and aa-proxy-rs) is taken"
+else
+  pass "TCP $PROXY_PORT free"
+fi
+warn "Bluetooth Wi-Fi handshake not implemented yet: autoapp never starts OpenAuto's btservice (see docs/wireless.md)"
+
+echo
+echo "$fails failed, $warns warning(s)"
+[ "$NO_FAIL" -eq 1 ] && exit 0
+[ "$fails" -eq 0 ]

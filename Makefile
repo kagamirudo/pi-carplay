@@ -43,8 +43,9 @@ RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
 	-e 's|@DEFAULT_INI@|$(REPO)/deploy/openauto/openauto.ini|g'
 
 SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
-	deploy/bin/pi-carplay-supervise packaging/pi-carplay-setup packaging/postinst packaging/build-deb.sh \
-	packaging/test-deb.sh raspi-headunit/tests/smoke.sh tools/pi-carplay-selftest
+	deploy/bin/pi-carplay-supervise deploy/bin/pi-carplay-wireless-setup packaging/pi-carplay-setup \
+	packaging/postinst packaging/build-deb.sh packaging/test-deb.sh raspi-headunit/tests/smoke.sh \
+	tools/pi-carplay-selftest tools/pi-carplay-wireless-check
 
 # Line coverage of raspi-headunit/src may not drop below this (raise it, never lower it).
 COVERAGE_MIN  ?= 80
@@ -262,6 +263,14 @@ status: ## Show what is running and the health of the Pi
 .PHONY: selftest
 selftest: ## Check this Pi: display, touch, Bluetooth, USB rule, binaries, power
 	$(REPO)/tools/pi-carplay-selftest
+
+.PHONY: wireless-check
+wireless-check: ## Check readiness for wireless Android Auto: Bluetooth dongle, 5 GHz hotspot, ports (read-only)
+	$(REPO)/tools/pi-carplay-wireless-check
+
+.PHONY: wireless-setup
+wireless-setup: ## Prepare wireless Android Auto: firmware, phone adapter, hotspot profile (ARGS=--dry-run to preview)
+	$(REPO)/deploy/bin/pi-carplay-wireless-setup $(ARGS)
 
 # ---------------------------------------------------------------- clean
 

@@ -33,7 +33,7 @@ The phone plugs into the Pi over USB. Android Auto runs full-screen on the panel
 | **Bluetooth audio**: scan, pair (PIN `0000`/`1234` handled automatically), connect, route PipeWire output | ✅ Tested with a speaker |
 | **Autostart**: shell plus Android Auto at login | ✅ Working |
 | **Dash cam** (Camera Module 3) | 🟡 Camera verified, recorder not built yet |
-| **Wireless Android Auto** | ⏳ Planned |
+| **Wireless Android Auto**: adapter check and 5 GHz hotspot profile ready; Bluetooth handshake not built ([details](docs/wireless.md)) | 🟡 Preparing |
 | **CarPlay** (needs an MFi-certified adapter) | ⏳ Planned |
 | **Printed mirror-mount housing** | ⏳ Planned |
 
@@ -47,6 +47,7 @@ The phone plugs into the Pi over USB. Android Auto runs full-screen on the panel
 | Official active cooler | |
 | **5 V / 5 A USB-C power supply** | Required. See [Troubleshooting](docs/troubleshooting.md#white-screen-random-reboots) |
 | Android phone + USB cable | Android Auto app installed |
+| *Optional:* TP-Link UB500 / UB500 Plus USB Bluetooth adapter | For wireless Android Auto. See [what to buy](docs/wireless.md#choosing-a-usb-bluetooth-adapter) |
 
 Details, pinout and driver notes are in [`raspi-headunit/docs/hardware.md`](raspi-headunit/docs/hardware.md).
 
@@ -64,7 +65,7 @@ pi-carplay-setup --boot     # labwc touch and autostart for this user, display o
 sudo reboot
 ```
 
-The package installs to `/opt/pi-carplay` and adds `pi-carplay-setup`, `pi-carplay-restart`, `pi-carplay-boot-config` and `pi-carplay-selftest`. All files are on the [releases page](https://github.com/kagamirudo/pi-carplay/releases), with a `SHA256SUMS` file and the GPL source tarball.
+The package installs to `/opt/pi-carplay` and adds `pi-carplay-setup`, `pi-carplay-restart`, `pi-carplay-boot-config`, `pi-carplay-selftest`, `pi-carplay-wireless-check` and `pi-carplay-wireless-setup`. All files are on the [releases page](https://github.com/kagamirudo/pi-carplay/releases), with a `SHA256SUMS` file and the GPL source tarball.
 
 ### Option B: build from source
 
@@ -93,6 +94,7 @@ After the reboot the panel shows the shell. Plug in the phone and Android Auto t
 | Connect the car stereo | Shell **BT** → **Scan** → put the car in pairing mode → **Connect** |
 | Recover from a frozen or black screen | `pi-carplay-restart` (package) or `make restart` (source) |
 | Check health | `pi-carplay-selftest` (package) or `make selftest` (source) |
+| Check readiness for wireless Android Auto | `pi-carplay-wireless-check` or `make wireless-check` ([wireless.md](docs/wireless.md)) |
 
 More detail is in [docs/usage.md](docs/usage.md).
 
@@ -129,11 +131,11 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 | `packaging/` | `.deb` builder, package scripts and Debian copyright file |
 | `.github/workflows/` | Quality pipeline on arm64, nightly soak, tag-triggered releases |
 | `tests/scripts/` | bats tests for the supervisor, launcher and setup scripts |
-| `tools/` | `pi-carplay-selftest`, the on-device health check |
+| `tools/` | `pi-carplay-selftest`, the on-device health check, and `pi-carplay-wireless-check` |
 | `raspi-headunit/` | The head-unit shell: C++20, Qt 6.4, QML, CMake, unit tests |
 | `patches/` | **GPL-3.0** patches for OpenAuto and aasdk, pinned to upstream commits |
 | `deploy/` | Files `make install` puts on the system: udev rule, labwc config, autostart, OpenAuto config, restart script |
-| `docs/` | Installation, usage, architecture, troubleshooting, quality policy, testing, releasing |
+| `docs/` | Installation, usage, architecture, wireless, troubleshooting, quality policy, testing, releasing |
 | `docs/plans/` | Numbered design plans, starting with the [original project plan](docs/plans/0001-pi5-head-unit-and-dash-cam.md) |
 | `CONTRIBUTING.md` | How changes get in |
 | `CHANGELOG.md` | Release history |

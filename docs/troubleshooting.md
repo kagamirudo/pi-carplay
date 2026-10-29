@@ -71,6 +71,15 @@ Change it in `/boot/firmware/config.txt` and reboot.
 - The status line shows which PIN was tried. If the car wants a different fixed PIN, edit `pins_` in `raspi-headunit/src/bluetooth/BluetoothDevices.hpp`.
 - If the shell shows `Pairing agent: …` at start-up, another program holds the default agent. The shell's agent takes over by default, so restart the shell after closing the other program.
 
+## USB Bluetooth adapter not working
+
+Run `pi-carplay-wireless-check`. It names each controller, says whether `btusb` knows the adapter, and shows the firmware result from the kernel log.
+
+- `firmware file … not found`: install `firmware-realtek` (`pi-carplay-wireless-setup` does this) and replug.
+- `download fw command failed (-110)` on a Pi 5: update the bootloader (`sudo rpi-eeprom-update -a`, then reboot) and replug.
+- No firmware line at all for a Realtek adapter: this kernel may not know its USB ID. The TP-Link UB600 (`37ad:0600`) is one example. Use a UB500 (`2357:0604`).
+- The shell's BT page lists devices on `hci0`. If the dongle took `hci0`, see [picking which controller does what](wireless.md#picking-which-controller-does-what).
+
 ## The shell or Android Auto keeps restarting
 
 Both programs run under `pi-carplay-supervise`, which starts them again when they exit: after 1 s, then doubling up to 30 s while they keep failing. Each exit is a line in `~/.local/state/pi-carplay/crashes.log`. Run `pi-carplay-selftest` and look at the end of the matching log. Under-voltage (`vcgencmd get_throttled` not `0x0`) is the most common cause.

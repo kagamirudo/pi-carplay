@@ -64,6 +64,29 @@ private slots:
         QCOMPARE(again.config.bluetooth.carDevice, std::string("Car Stereo"));
     }
 
+    void displayAdjustParsesAndRoundTrips() {
+        const auto parsed = ConfigurationManager::parse(
+            R"({"display":{"brightness":-30,"contrast":80,"hue":-120,"saturation":70}})");
+        QVERIFY2(parsed.ok, parsed.error.c_str());
+        QCOMPARE(parsed.config.display.brightness, -30);
+        QCOMPARE(parsed.config.display.contrast, 80);
+        QCOMPARE(parsed.config.display.hue, -120);
+        QCOMPARE(parsed.config.display.saturation, 70);
+        const auto again = ConfigurationManager::parse(ConfigurationManager::serialize(parsed.config));
+        QVERIFY2(again.ok, again.error.c_str());
+        QCOMPARE(again.config.display.brightness, -30);
+        QCOMPARE(again.config.display.contrast, 80);
+        QCOMPARE(again.config.display.hue, -120);
+        QCOMPARE(again.config.display.saturation, 70);
+    }
+
+    void displayAdjustDefaultsZeroAndRejectsOutOfRange() {
+        QCOMPARE(AppConfig::defaults().display.brightness, 0);
+        QCOMPARE(AppConfig::defaults().display.saturation, 0);
+        QVERIFY(!ConfigurationManager::parse(R"({"display":{"contrast":200}})").ok);
+        QVERIFY(!ConfigurationManager::parse(R"({"display":{"hue":-400}})").ok);
+    }
+
     void unicodeAndControlCharactersRoundTrip() {
         AppConfig config = AppConfig::defaults();
         config.bluetooth.carDevice = "Xe hơi \t\"\\ \x01 end";

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import Qt5Compat.GraphicalEffects
 
 ApplicationWindow {
     id: window
@@ -119,16 +120,37 @@ ApplicationWindow {
         }
     }
 
-    StackLayout {
-        id: stack
-        objectName: "stack"
+    // Settings > Display colour adjust, applied over the pages. Each layer is
+    // enabled only when non-neutral, so at the defaults (all 0) the render path
+    // is exactly as it is without this wrapper. layer.effect keeps touch working.
+    Item {
         anchors.fill: parent
-        currentIndex: 0
-        HomePage {}
-        ConnectionPage {}
-        DashcamPage {}
-        BluetoothPage {}
-        WifiPage {}
-        SettingsPage {}
+        layer.enabled: shell.displayHue !== 0 || shell.displaySaturation !== 0
+        layer.effect: HueSaturation {
+            hue: shell.displayHue / 180.0
+            saturation: shell.displaySaturation / 100.0
+        }
+
+        Item {
+            anchors.fill: parent
+            layer.enabled: shell.displayBrightness !== 0 || shell.displayContrast !== 0
+            layer.effect: BrightnessContrast {
+                brightness: shell.displayBrightness / 100.0
+                contrast: shell.displayContrast / 100.0
+            }
+
+            StackLayout {
+                id: stack
+                objectName: "stack"
+                anchors.fill: parent
+                currentIndex: 0
+                HomePage {}
+                ConnectionPage {}
+                DashcamPage {}
+                BluetoothPage {}
+                WifiPage {}
+                SettingsPage {}
+            }
+        }
     }
 }

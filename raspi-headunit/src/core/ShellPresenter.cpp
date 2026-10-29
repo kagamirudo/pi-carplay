@@ -281,6 +281,40 @@ void ShellPresenter::adjustStorageLimit(int deltaSteps) {
     refresh();
 }
 
+void ShellPresenter::setDisplayBrightness(int v) {
+    const auto& d = app_.config().display;
+    app_.setDisplayAdjust(v, d.contrast, d.hue, d.saturation);
+    saveResult_ = QStringLiteral("Unsaved change");
+    refresh();
+}
+
+void ShellPresenter::setDisplayContrast(int v) {
+    const auto& d = app_.config().display;
+    app_.setDisplayAdjust(d.brightness, v, d.hue, d.saturation);
+    saveResult_ = QStringLiteral("Unsaved change");
+    refresh();
+}
+
+void ShellPresenter::setDisplayHue(int v) {
+    const auto& d = app_.config().display;
+    app_.setDisplayAdjust(d.brightness, d.contrast, v, d.saturation);
+    saveResult_ = QStringLiteral("Unsaved change");
+    refresh();
+}
+
+void ShellPresenter::setDisplaySaturation(int v) {
+    const auto& d = app_.config().display;
+    app_.setDisplayAdjust(d.brightness, d.contrast, d.hue, v);
+    saveResult_ = QStringLiteral("Unsaved change");
+    refresh();
+}
+
+void ShellPresenter::resetDisplayAdjust() {
+    app_.setDisplayAdjust(0, 0, 0, 0);
+    saveResult_ = QStringLiteral("Unsaved change");
+    refresh();
+}
+
 void ShellPresenter::saveSettings() {
     std::string error;
     if (!app_.saveConfig(savePath_, &error)) {

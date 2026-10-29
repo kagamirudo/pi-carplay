@@ -35,6 +35,10 @@ class ShellPresenter : public QObject {
     Q_PROPERTY(QString storageLimitLabel READ storageLimitLabel NOTIFY changed)
     Q_PROPERTY(QString displaySummary READ displaySummary NOTIFY changed)
     Q_PROPERTY(QString touchSummary READ touchSummary NOTIFY changed)
+    Q_PROPERTY(int displayBrightness READ displayBrightness NOTIFY changed)
+    Q_PROPERTY(int displayContrast READ displayContrast NOTIFY changed)
+    Q_PROPERTY(int displayHue READ displayHue NOTIFY changed)
+    Q_PROPERTY(int displaySaturation READ displaySaturation NOTIFY changed)
     Q_PROPERTY(QString saveResult READ saveResult NOTIFY changed)
     Q_PROPERTY(bool carMode READ carMode NOTIFY changed)
     Q_PROPERTY(bool previewOpen READ previewOpen NOTIFY changed)
@@ -67,6 +71,10 @@ public:
     QString storageLimitLabel() const { return storageLimitLabel_; }
     QString displaySummary() const { return displaySummary_; }
     QString touchSummary() const { return touchSummary_; }
+    int displayBrightness() const { return app_.config().display.brightness; }
+    int displayContrast() const { return app_.config().display.contrast; }
+    int displayHue() const { return app_.config().display.hue; }
+    int displaySaturation() const { return app_.config().display.saturation; }
     QString saveResult() const { return saveResult_; }
     bool carMode() const { return carMode_; }
     bool previewOpen() const { return previewOpen_; }
@@ -78,6 +86,11 @@ public:
     Q_INVOKABLE void cycleLogLevel();
     Q_INVOKABLE void adjustStorageLimit(int deltaSteps);
     Q_INVOKABLE void saveSettings();
+    Q_INVOKABLE void setDisplayBrightness(int v);
+    Q_INVOKABLE void setDisplayContrast(int v);
+    Q_INVOKABLE void setDisplayHue(int v);
+    Q_INVOKABLE void setDisplaySaturation(int v);
+    Q_INVOKABLE void resetDisplayAdjust();
     Q_INVOKABLE void requestRecord();
     Q_INVOKABLE void togglePreview();
     Q_INVOKABLE void openAndroidAuto();

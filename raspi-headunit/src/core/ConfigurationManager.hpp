@@ -12,6 +12,11 @@ struct DisplayConfig {
     int height = 320;
     std::string output = "SPI-1";
     bool fullscreen = true;
+    // Shell-only colour adjust (not Android Auto); QML scales these to -1..1.
+    int brightness = 0;   // -100..100
+    int contrast = 0;     // -100..100
+    int hue = 0;          // -180..180
+    int saturation = 0;   // -100..100
 };
 
 struct DashcamConfig {

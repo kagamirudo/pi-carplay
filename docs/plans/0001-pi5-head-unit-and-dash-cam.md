@@ -1,5 +1,14 @@
 # Project: Raspberry Pi 5 — DIY CarPlay, Android Auto, and Dash Cam
 
+| | |
+| --- | --- |
+| **Plan** | 0001 |
+| **Status** | Accepted |
+| **Date** | 2026-10-29 |
+| **Summary** | Original project plan: hardware baseline, stack, requirements and phased roadmap for the Pi 5 head unit and dash cam. |
+
+This is the plan the project started from, kept as written. Paths and phase status in it reflect the time it was written; the current state is in the [README](../../README.md) and [architecture](../architecture.md).
+
 ## 1. Project Overview
 
 Build a small, self-contained infotainment unit on the Raspberry Pi 5 already on this bench. It should show Apple CarPlay and Android Auto, send audio to the car's existing Bluetooth stereo, and record the road ahead with the camera that is already attached.

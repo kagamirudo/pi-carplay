@@ -7,6 +7,7 @@ Thanks for helping. pi-carplay runs in cars, so changes go through the rules in 
 3. Every bug fix comes with a test that fails without it. See [docs/testing.md](docs/testing.md) for where tests go.
 4. Keep coverage from dropping. If you raise it, raise `COVERAGE_MIN` in the Makefile in the same pull request.
 5. Add a line under `Unreleased` in `CHANGELOG.md` for anything a user would notice.
+6. For a larger feature or design change, write a plan first in [docs/plans/](docs/plans/README.md).
 
 ## Setting up
 

@@ -16,7 +16,7 @@ make check          # everything CI checks: lint, analysis, tests, sanitizers, c
 | `raspi-headunit/tests/UiFixture.hpp` | Loads the real QML with the real presenter and a fake Bluetooth backend |
 | `raspi-headunit/tests/smoke.sh` | Starts the real `headunit` binary under good and broken config states |
 | `raspi-headunit/tests/panel-480x320.json` | Offscreen screen matching the panel, so layouts are tested at the real size |
-| `tests/scripts/*.bats` | Tests for the supervisor, launcher, setup, boot-config and wireless scripts. `wireless.bats` uses a fake sysfs and stub `iw`, `nmcli`, `ss` and `sudo`, so it needs no radio |
+| `tests/scripts/*.bats` | Tests for the supervisor, launcher, setup, boot-config, wireless and update-check scripts. `wireless.bats` uses a fake sysfs and stub `iw`, `nmcli`, `ss` and `sudo`, so it needs no radio; `update.bats` runs `pi-carplay-update` against a local fake of the GitHub API (`fake_github.py`) |
 | `packaging/test-deb.sh` | Checks for the built package; `--install` exercises it on a clean system |
 | `tools/pi-carplay-selftest` | On-device check of a real head unit |
 | `tools/pi-carplay-wireless-check` | On-device check of Bluetooth adapters, the 5 GHz hotspot and ports for wireless Android Auto |

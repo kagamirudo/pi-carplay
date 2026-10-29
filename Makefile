@@ -45,7 +45,7 @@ RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
 SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
 	deploy/bin/pi-carplay-supervise deploy/bin/pi-carplay-wireless-setup packaging/pi-carplay-setup \
 	packaging/postinst packaging/build-deb.sh packaging/test-deb.sh raspi-headunit/tests/smoke.sh \
-	tools/pi-carplay-selftest tools/pi-carplay-wireless-check
+	tools/pi-carplay-selftest tools/pi-carplay-wireless-check tools/pi-carplay-update
 
 # Line coverage of raspi-headunit/src may not drop below this (raise it, never lower it).
 COVERAGE_MIN  ?= 80
@@ -67,7 +67,7 @@ APT_PACKAGES := \
 	patchelf shellcheck
 
 # Test and analysis tools (make check).
-QA_PACKAGES := bats cppcheck gcovr lintian dbus
+QA_PACKAGES := bats cppcheck gcovr lintian dbus curl python3
 
 # Clone $(1) at commit $(3) into $(2) unless it already exists.
 define fetch

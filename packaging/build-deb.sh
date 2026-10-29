@@ -60,7 +60,7 @@ render "$REPO/deploy/bin/pi-carplay-autoapp" > "$STAGE/usr/bin/pi-carplay-autoap
 render "$REPO/deploy/bin/aa-restart.sh" > "$STAGE/usr/bin/pi-carplay-restart"
 install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-carplay-supervise" \
   "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/tools/pi-carplay-selftest" \
-  "$REPO/tools/pi-carplay-wireless-check" "$STAGE/usr/bin/"
+  "$REPO/tools/pi-carplay-wireless-check" "$REPO/tools/pi-carplay-update" "$STAGE/usr/bin/"
 install -m 0755 "$REPO/packaging/pi-carplay-setup" "$STAGE/usr/bin/"
 chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restart"
 
@@ -93,7 +93,7 @@ done | cut -d: -f1 | sort -u)
 EXTRA="qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
 qml6-module-qtquick-templates qml6-module-qtquick-window qml6-module-qtqml
 qml6-module-qtqml-workerscript qml6-module-qtqml-models qt6-wayland
-libqt5multimedia5-plugins bluez pulseaudio-utils wlr-randr udev"
+libqt5multimedia5-plugins bluez pulseaudio-utils wlr-randr udev curl python3"
 # shellcheck disable=SC2086  # split the package lists into words
 DEPENDS=$(printf '%s\n' $DEPS $EXTRA | sort -u | paste -sd, - | sed 's/,/, /g')
 

@@ -64,13 +64,22 @@ int main(int argc, char* argv[]) {
 
     headunit::AppConfig config = headunit::AppConfig::defaults();
     std::string error;
+    QString notice;
     headunit::ConfigurationManager loader;
-    if (std::filesystem::is_regular_file(savePath)) {
-        if (!loader.loadFile(savePath, &error)) {
+    std::error_code ec;
+    if (std::filesystem::exists(savePath, ec)) {
+        if (loader.loadFile(savePath, &error)) {
+            config = loader.get();
+        } else if (parser.isSet(QStringLiteral("config"))) {
             std::cerr << "config: " << error << '\n';
-            return 1;
+            return 2;
+        } else {
+            // A driver cannot fix a JSON file: set it aside and start with defaults.
+            const auto aside = std::filesystem::path(savePath.string() + ".corrupt");
+            std::filesystem::rename(savePath, aside, ec);
+            headunit::Logger::error("config", error + (ec ? "" : "; moved to " + aside.string()));
+            notice = QStringLiteral("Settings were reset: ") + QString::fromStdString(error);
         }
-        config = loader.get();
     } else if (!parser.isSet(QStringLiteral("config"))) {
         const auto shipped = shippedConfig();
         if (!shipped.empty() && loader.loadFile(shipped, &error)) {
@@ -85,8 +94,11 @@ int main(int argc, char* argv[]) {
 
     headunit::ApplicationManager manager(std::move(config));
     headunit::ShellPresenter presenter(manager, savePath);
+    if (!notice.isEmpty()) {
+        presenter.setNotice(notice);
+    }
 
-    headunit::BluetoothDevices bluetooth;
+    headunit::BluetoothDevices bluetooth(!qEnvironmentVariableIsSet("HEADUNIT_NO_BLUETOOTH"));
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("shell"), &presenter);

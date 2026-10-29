@@ -2,6 +2,9 @@
 
 #include "core/Log.hpp"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <cctype>
 #include <fstream>
 #include <map>
@@ -243,6 +246,15 @@ private:
         if (!consume('{')) {
             return false;
         }
+        if (++depth_ > kMaxDepth) {
+            return fail("JSON nested too deeply");
+        }
+        const bool ok = parseMembers(out);
+        --depth_;
+        return ok;
+    }
+
+    bool parseMembers(Json* out) {
         skip();
         if (i_ < in_.size() && in_[i_] == '}') {
             ++i_;
@@ -281,11 +293,25 @@ private:
         return false;
     }
 
+    // Recursion bound so hostile or corrupt input cannot exhaust the stack.
+    static constexpr int kMaxDepth = 16;
+
     std::string_view in_;
     std::size_t i_ = 0;
+    int depth_ = 0;
     std::string error_;
     bool failed_ = false;
 };
+
+bool syncPath(const std::filesystem::path& path) {
+    const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+    const bool ok = ::fsync(fd) == 0;
+    ::close(fd);
+    return ok;
+}
 
 const Json* field(const Json& object, const char* key) {
     const auto it = object.object.find(key);
@@ -517,6 +543,14 @@ void ConfigurationManager::reset(AppConfig config) { config_ = std::move(config)
 const AppConfig& ConfigurationManager::get() const { return config_; }
 
 bool ConfigurationManager::loadFile(const std::filesystem::path& path, std::string* error) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (!ec && size > kMaxFileBytes) {
+        if (error) {
+            *error = path.string() + " is larger than " + std::to_string(kMaxFileBytes) + " bytes";
+        }
+        return false;
+    }
     std::ifstream in(path);
     if (!in) {
         if (error) {
@@ -524,9 +558,16 @@ bool ConfigurationManager::loadFile(const std::filesystem::path& path, std::stri
         }
         return false;
     }
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    const ParseResult parsed = parse(buffer.str());
+    std::string text(kMaxFileBytes + 1, '\0');
+    in.read(text.data(), static_cast<std::streamsize>(text.size()));
+    text.resize(static_cast<std::size_t>(in.gcount()));
+    if (text.size() > kMaxFileBytes) {
+        if (error) {
+            *error = path.string() + " is larger than " + std::to_string(kMaxFileBytes) + " bytes";
+        }
+        return false;
+    }
+    const ParseResult parsed = parse(text);
     if (!parsed.ok) {
         if (error) {
             *error = parsed.error;
@@ -558,20 +599,33 @@ bool ConfigurationManager::saveFile(const std::filesystem::path& path, std::stri
             return false;
         }
         out << serialize(config_);
+        out.flush();
         if (!out) {
             if (error) {
                 *error = "could not write " + tmp.string();
             }
+            std::filesystem::remove(tmp, ec);
             return false;
         }
+    }
+    // The car can cut power at any moment: the data must be on disk before the
+    // rename makes it the live config.
+    if (!syncPath(tmp)) {
+        if (error) {
+            *error = "could not flush " + tmp.string();
+        }
+        std::filesystem::remove(tmp, ec);
+        return false;
     }
     std::filesystem::rename(tmp, path, ec);
     if (ec) {
         if (error) {
             *error = "could not replace " + path.string();
         }
+        std::filesystem::remove(tmp, ec);
         return false;
     }
+    syncPath(path.has_parent_path() ? path.parent_path() : std::filesystem::path("."));
     return true;
 }
 

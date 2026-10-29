@@ -261,8 +261,19 @@ void ShellPresenter::saveSettings() {
 }
 
 void ShellPresenter::openAndroidAuto() {
-    // OpenAuto shows its projection window again on SIGUSR1.
-    QProcess::startDetached(QStringLiteral("pkill"), {QStringLiteral("-USR1"), QStringLiteral("-x"), QStringLiteral("autoapp")});
+    if (resumeCommand_.isEmpty()) {
+        return;
+    }
+    if (!QProcess::startDetached(resumeCommand_.first(), resumeCommand_.mid(1))) {
+        Logger::warn("projection", "could not signal autoapp");
+    }
+}
+
+void ShellPresenter::setResumeCommand(QStringList command) { resumeCommand_ = std::move(command); }
+
+void ShellPresenter::setNotice(const QString& text) {
+    saveResult_ = text;
+    emit changed();
 }
 
 void ShellPresenter::requestRecord() {

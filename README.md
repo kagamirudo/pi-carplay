@@ -1,6 +1,7 @@
 # pi-carplay
 
 [![CI](https://github.com/kagamirudo/pi-carplay/actions/workflows/ci.yml/badge.svg)](https://github.com/kagamirudo/pi-carplay/actions/workflows/ci.yml)
+[![Soak](https://github.com/kagamirudo/pi-carplay/actions/workflows/soak.yml/badge.svg)](https://github.com/kagamirudo/pi-carplay/actions/workflows/soak.yml)
 [![Release](https://img.shields.io/github/v/release/kagamirudo/pi-carplay?sort=semver)](https://github.com/kagamirudo/pi-carplay/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT%20%2B%20GPL--3.0%20patches-blue)](LICENSE)
 
@@ -56,7 +57,7 @@ pi-carplay-setup --boot     # labwc touch and autostart for this user, display o
 sudo reboot
 ```
 
-The package installs to `/opt/pi-carplay` and adds `pi-carplay-setup`, `pi-carplay-restart` and `pi-carplay-boot-config`. All files are on the [releases page](https://github.com/kagamirudo/pi-carplay/releases), with a `SHA256SUMS` file and the GPL source tarball.
+The package installs to `/opt/pi-carplay` and adds `pi-carplay-setup`, `pi-carplay-restart`, `pi-carplay-boot-config` and `pi-carplay-selftest`. All files are on the [releases page](https://github.com/kagamirudo/pi-carplay/releases), with a `SHA256SUMS` file and the GPL source tarball.
 
 ### Option B: build from source
 
@@ -65,7 +66,7 @@ git clone https://github.com/kagamirudo/pi-carplay.git ~/CarPlay
 cd ~/CarPlay
 make deps          # apt packages (sudo)
 make build         # h264bitstream, aasdk, OpenAuto (patched) and the shell
-make test          # unit tests and an offscreen smoke test
+make test          # unit, UI, stress, smoke and script tests (no Pi hardware needed)
 make install       # udev rule, labwc touch and autostart, OpenAuto config, restart script
 make boot-config   # SPI display overlay in /boot/firmware/config.txt
 sudo reboot
@@ -84,9 +85,19 @@ After the reboot the panel shows the shell. Plug in the phone and Android Auto t
 | Return to Android Auto | Shell **Home** → **Android Auto** |
 | Connect the car stereo | Shell **BT** → **Scan** → put the car in pairing mode → **Connect** |
 | Recover from a frozen or black screen | `pi-carplay-restart` (package) or `make restart` (source) |
-| Check health | `make status` |
+| Check health | `pi-carplay-selftest` (package) or `make selftest` (source) |
 
 More detail is in [docs/usage.md](docs/usage.md).
+
+## Reliability
+
+The shell and Android Auto run under a supervisor that restarts them if they ever exit, and records each crash. A corrupt settings file, a missing Bluetooth service or a power cut mid-save cannot stop the head unit from starting.
+
+Every pull request and release goes through the same gates: `-Werror` builds, shellcheck, cppcheck and qmllint, unit, D-Bus integration, UI and smoke tests, a seeded UI monkey test, config fuzzing, AddressSanitizer and UBSan, a coverage floor, and a real install and purge of the `.deb` on a clean Bookworm. A nightly soak runs 100,000 random taps and 2,000,000 fuzz cases. Releases also pass a hardware checklist on a real Pi. See [docs/quality.md](docs/quality.md) and [docs/testing.md](docs/testing.md).
+
+```sh
+make deps-qa && make check   # every gate CI runs, locally
+```
 
 ## How it fits together
 
@@ -109,11 +120,14 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 | --- | --- |
 | `Makefile` | One-command dependencies, build, test, install, boot config and packaging |
 | `packaging/` | `.deb` builder, package scripts and Debian copyright file |
-| `.github/workflows/` | CI (lint, build, test, package on arm64) and tag-triggered releases |
+| `.github/workflows/` | Quality pipeline on arm64, nightly soak, tag-triggered releases |
+| `tests/scripts/` | bats tests for the supervisor, launcher and setup scripts |
+| `tools/` | `pi-carplay-selftest`, the on-device health check |
 | `raspi-headunit/` | The head-unit shell: C++20, Qt 6.4, QML, CMake, unit tests |
 | `patches/` | **GPL-3.0** patches for OpenAuto and aasdk, pinned to upstream commits |
 | `deploy/` | Files `make install` puts on the system: udev rule, labwc config, autostart, OpenAuto config, restart script |
-| `docs/` | Installation, usage, architecture, troubleshooting, releasing |
+| `docs/` | Installation, usage, architecture, troubleshooting, quality policy, testing, releasing |
+| `CONTRIBUTING.md` | How changes get in |
 | `CHANGELOG.md` | Release history |
 | `scripts/` | Bring-up tools, such as a raw touch and panel test canvas |
 | `plan_01.md` | Original project plan and design notes |

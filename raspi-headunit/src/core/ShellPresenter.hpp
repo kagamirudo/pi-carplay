@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <filesystem>
 
 namespace headunit {
@@ -76,6 +77,11 @@ public:
     Q_INVOKABLE void requestRecord();
     Q_INVOKABLE void openAndroidAuto();
 
+    // Program and arguments run by openAndroidAuto(). Defaults to signalling autoapp.
+    void setResumeCommand(QStringList command);
+    // Shown in place of the save result, e.g. when settings were reset at start-up.
+    void setNotice(const QString& text);
+
 signals:
     void changed();
 
@@ -109,6 +115,9 @@ private:
     QString displaySummary_;
     QString touchSummary_;
     QString saveResult_ = "Not saved yet";
+    // OpenAuto shows its projection window again on SIGUSR1.
+    QStringList resumeCommand_{QStringLiteral("pkill"), QStringLiteral("-USR1"), QStringLiteral("-x"),
+                               QStringLiteral("autoapp")};
 };
 
 }  // namespace headunit

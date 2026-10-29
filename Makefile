@@ -5,6 +5,7 @@
 #   make install     udev rule, labwc touch/autostart, OpenAuto config, restart script
 #   make boot-config add the SPI display overlay to /boot/firmware/config.txt (reboot after)
 #   make package     build dist/pi-carplay_<version>_arm64.deb and the GPL source tarball
+#   make check       every quality gate CI runs (lint, analysis, tests, sanitizers, coverage)
 #
 # Run `make help` for every target.
 
@@ -35,13 +36,21 @@ OPENAUTO_BIN  := $(SRC_DIR)/openauto/bin
 
 # Fill deploy/ templates for a from-source install.
 RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
+	-e 's|@SUPERVISE@|$(BIN_DIR)/pi-carplay-supervise|g' \
 	-e 's|@AUTOAPP_LAUNCHER@|$(BIN_DIR)/pi-carplay-autoapp|g' \
 	-e 's|@AUTOAPP@|$(OPENAUTO_BIN)/autoapp|g' \
 	-e 's|@OPENAUTO_DIR@|$(OPENAUTO_BIN)|g' \
 	-e 's|@DEFAULT_INI@|$(REPO)/deploy/openauto/openauto.ini|g'
 
 SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
-	packaging/pi-carplay-setup packaging/postinst packaging/build-deb.sh
+	deploy/bin/pi-carplay-supervise packaging/pi-carplay-setup packaging/postinst packaging/build-deb.sh \
+	packaging/test-deb.sh raspi-headunit/tests/smoke.sh tools/pi-carplay-selftest
+
+# Line coverage of raspi-headunit/src may not drop below this (raise it, never lower it).
+COVERAGE_MIN  ?= 80
+QMLLINT       ?= /usr/lib/qt6/bin/qmllint
+CMAKE_FLAGS   ?=
+CTEST_ARGS    ?=
 
 APT_PACKAGES := \
 	build-essential cmake git pkg-config autoconf automake libtool \
@@ -55,6 +64,9 @@ APT_PACKAGES := \
 	qml6-module-qtqml-workerscript qml6-module-qtqml-models \
 	bluez pulseaudio-utils wlr-randr grim \
 	patchelf shellcheck
+
+# Test and analysis tools (make check).
+QA_PACKAGES := bats cppcheck gcovr lintian dbus
 
 # Clone $(1) at commit $(3) into $(2) unless it already exists.
 define fetch
@@ -96,6 +108,10 @@ deps: ## Install build and runtime packages with apt (sudo)
 	sudo apt-get update
 	sudo apt-get install -y $(APT_PACKAGES)
 
+.PHONY: deps-qa
+deps-qa: ## Install the test and analysis tools used by make check (sudo)
+	sudo apt-get install -y $(QA_PACKAGES)
+
 # ---------------------------------------------------------------- build
 
 .PHONY: build
@@ -128,14 +144,51 @@ openauto: h264bitstream aasdk ## Fetch, patch and build OpenAuto (autoapp)
 	cmake --build $(SRC_DIR)/openauto/build --target autoapp -j$(JOBS)
 
 .PHONY: headunit
-headunit: ## Build the Qt 6 head-unit shell
-	cmake -S $(HEADUNIT_DIR) -B $(HEADUNIT_DIR)/build -DCMAKE_BUILD_TYPE=Release
+headunit: ## Build the Qt 6 head-unit shell (warnings are errors)
+	cmake -S $(HEADUNIT_DIR) -B $(HEADUNIT_DIR)/build -DCMAKE_BUILD_TYPE=Release -DHEADUNIT_WERROR=ON $(CMAKE_FLAGS)
 	cmake --build $(HEADUNIT_DIR)/build -j$(JOBS)
 
+# ---------------------------------------------------------------- quality gates
+
+.PHONY: check
+check: lint analyze test test-asan coverage ## Every gate CI runs before a merge or release
+
 .PHONY: test
-test: headunit ## Run unit tests and an offscreen smoke start of the shell
-	ctest --test-dir $(HEADUNIT_DIR)/build --output-on-failure
-	QT_QPA_PLATFORM=offscreen timeout 10 $(HEADUNIT_BIN) --smoke
+test: headunit test-scripts ## Unit, integration, UI, stress and smoke tests, plus script tests
+	ctest --test-dir $(HEADUNIT_DIR)/build --output-on-failure -j$(JOBS) $(CTEST_ARGS)
+
+.PHONY: test-unit
+test-unit: headunit ## Fast tests only (unit label)
+	ctest --test-dir $(HEADUNIT_DIR)/build --output-on-failure -j$(JOBS) -L unit
+
+.PHONY: test-scripts
+test-scripts: ## bats tests for the launcher, supervisor and setup scripts
+	bats $(REPO)/tests/scripts
+
+.PHONY: test-asan
+test-asan: ## Every shell test under AddressSanitizer and UndefinedBehaviorSanitizer
+	cmake -S $(HEADUNIT_DIR) -B $(HEADUNIT_DIR)/build-asan -DCMAKE_BUILD_TYPE=Debug -DHEADUNIT_WERROR=ON \
+		-DHEADUNIT_SANITIZE=address,undefined
+	cmake --build $(HEADUNIT_DIR)/build-asan -j$(JOBS)
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1:strict_string_checks=1 \
+	UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 HEADUNIT_STRESS_TAPS=1000 \
+		ctest --test-dir $(HEADUNIT_DIR)/build-asan --output-on-failure -j$(JOBS)
+
+.PHONY: coverage
+coverage: ## Line and branch coverage; fails below COVERAGE_MIN percent of lines
+	cmake -S $(HEADUNIT_DIR) -B $(HEADUNIT_DIR)/build-cov -DCMAKE_BUILD_TYPE=Debug -DHEADUNIT_COVERAGE=ON
+	cmake --build $(HEADUNIT_DIR)/build-cov -j$(JOBS)
+	find $(HEADUNIT_DIR)/build-cov -name '*.gcda' -delete
+	HEADUNIT_STRESS_TAPS=500 ctest --test-dir $(HEADUNIT_DIR)/build-cov --output-on-failure -j$(JOBS)
+	cd $(HEADUNIT_DIR) && gcovr -r . --object-directory build-cov --filter src/ --exclude src/main.cpp \
+		--xml build-cov/coverage.xml --html-details build-cov/coverage.html --print-summary \
+		--fail-under-line $(COVERAGE_MIN)
+
+.PHONY: analyze
+analyze: ## Static analysis: cppcheck and qmllint
+	cppcheck --enable=warning,performance,portability --std=c++20 --inline-suppr --error-exitcode=1 \
+		--quiet --suppress=missingIncludeSystem --library=qt -I $(HEADUNIT_DIR)/src $(HEADUNIT_DIR)/src
+	$(QMLLINT) --unqualified disable $(HEADUNIT_DIR)/ui/*.qml
 
 # ---------------------------------------------------------------- install
 
@@ -167,9 +220,9 @@ install-openauto-config: ## OpenAuto settings (kept if one already exists)
 	cp -n $(REPO)/deploy/openauto/openauto.ini $(OPENAUTO_BIN)/openauto.ini
 
 .PHONY: install-scripts
-install-scripts: ## Install aa-restart.sh and pi-carplay-autoapp to ~/.local/bin
+install-scripts: ## Install aa-restart.sh, the autoapp launcher and the supervisor to ~/.local/bin
 	mkdir -p $(BIN_DIR)
-	for f in aa-restart.sh pi-carplay-autoapp; do \
+	for f in aa-restart.sh pi-carplay-autoapp pi-carplay-supervise; do \
 		$(RENDER) $(REPO)/deploy/bin/$$f > $(BIN_DIR)/$$f; \
 		chmod 0755 $(BIN_DIR)/$$f; \
 	done
@@ -184,6 +237,10 @@ boot-config: ## Add the SPI display overlay to config.txt (sudo, needs a reboot)
 package: ## Build dist/pi-carplay_<VERSION>_arm64.deb and the GPL source tarball
 	$(REPO)/packaging/build-deb.sh $(VERSION) $(SRC_DIR) $(DIST_DIR)
 
+.PHONY: test-package
+test-package: ## Install the .deb in a scratch root and check it (lintian, smoke start, purge; sudo)
+	$(REPO)/packaging/test-deb.sh $(DIST_DIR)/pi-carplay_$(VERSION)_$(shell dpkg --print-architecture).deb
+
 .PHONY: lint
 lint: ## shellcheck the scripts
 	shellcheck $(addprefix $(REPO)/,$(SHELL_SCRIPTS))
@@ -197,15 +254,20 @@ restart: ## Restart the shell and Android Auto on the running labwc session
 .PHONY: status
 status: ## Show what is running and the health of the Pi
 	@pgrep -a 'labwc|headunit|autoapp' || true
+	@$(BIN_DIR)/pi-carplay-supervise --status 2>/dev/null || true
 	@vcgencmd get_throttled 2>/dev/null || true
 	@grep -E '^dtoverlay=piscreen' $(BOOT_CFG) || echo "display overlay not set"
-	@tail -n 3 /tmp/autoapp.log 2>/dev/null || true
+	@tail -n 5 $(HOME)/.local/state/pi-carplay/crashes.log 2>/dev/null || true
+
+.PHONY: selftest
+selftest: ## Check this Pi: display, touch, Bluetooth, USB rule, binaries, power
+	$(REPO)/tools/pi-carplay-selftest
 
 # ---------------------------------------------------------------- clean
 
 .PHONY: clean
-clean: ## Remove the shell build directory and dist/
-	rm -rf $(HEADUNIT_DIR)/build $(DIST_DIR)
+clean: ## Remove the shell build directories and dist/
+	rm -rf $(HEADUNIT_DIR)/build $(HEADUNIT_DIR)/build-asan $(HEADUNIT_DIR)/build-cov $(DIST_DIR)
 
 .PHONY: clean-all
 clean-all: clean ## Also remove the OpenAuto, aasdk and h264bitstream build directories

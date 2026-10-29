@@ -1,53 +1,17 @@
 #include "bluetooth/BluetoothDevices.hpp"
 
+#include "bluetooth/DeviceList.hpp"
+
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusError>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
-#include <QRegularExpression>
-#include <QSet>
 #include <QVariantMap>
 
 namespace headunit {
-namespace {
 
-const QRegularExpression kDeviceLine(QStringLiteral("^Device ([0-9A-F:]{17}) (.*)$"));
-
-struct Entry {
-    QString address;
-    QString name;
-};
-
-QList<Entry> parseDevices(const QString& output) {
-    QList<Entry> entries;
-    for (const QString& line : output.split('\n', Qt::SkipEmptyParts)) {
-        const QRegularExpressionMatch match = kDeviceLine.match(line.trimmed());
-        if (match.hasMatch()) {
-            entries.append({match.captured(1), match.captured(2).trimmed()});
-        }
-    }
-    return entries;
-}
-
-QSet<QString> addresses(const QList<Entry>& entries) {
-    QSet<QString> set;
-    for (const Entry& entry : entries) {
-        set.insert(entry.address);
-    }
-    return set;
-}
-
-// bluetoothctl names unnamed devices after their address with dashes.
-bool unnamed(const Entry& entry) {
-    QString dashed = entry.address;
-    dashed.replace(':', '-');
-    return entry.name.isEmpty() || entry.name == dashed;
-}
-
-}  // namespace
-
-BluetoothDevices::BluetoothDevices(QObject* parent) : QObject(parent) {
+BluetoothDevices::BluetoothDevices(bool enabled, QObject* parent) : QObject(parent), enabled_(enabled) {
     scanRefresh_.setInterval(3000);
     connect(&scanRefresh_, &QTimer::timeout, this, &BluetoothDevices::refresh);
     connect(&scanProcess_, &QProcess::finished, this, [this] {
@@ -67,9 +31,14 @@ BluetoothDevices::BluetoothDevices(QObject* parent) : QObject(parent) {
         }
     });
     connect(&agent_, &BluetoothAgent::message, this, &BluetoothDevices::setStatus);
+    if (!enabled_) {
+        status_ = QStringLiteral("Bluetooth is turned off for this session.");
+        return;
+    }
     // bluetoothctl blocks waiting for bluetoothd when BlueZ is not running.
     QDBusConnectionInterface* bus = QDBusConnection::systemBus().interface();
     if (bus == nullptr || !bus->isServiceRegistered(QStringLiteral("org.bluez"))) {
+        enabled_ = false;
         status_ = QStringLiteral("Bluetooth service is not running.");
         return;
     }
@@ -87,11 +56,6 @@ bool BluetoothDevices::isPaired(const QString& address) const {
         }
     }
     return false;
-}
-
-bool BluetoothDevices::validAddress(const QString& address) {
-    static const QRegularExpression re(QStringLiteral("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$"));
-    return re.match(address).hasMatch();
 }
 
 QString BluetoothDevices::run(const QStringList& args, int timeoutMs) {
@@ -120,33 +84,20 @@ void BluetoothDevices::setStatus(const QString& status) {
 }
 
 void BluetoothDevices::refresh() {
-    const QList<Entry> all = parseDevices(run({QStringLiteral("devices")}));
-    const QSet<QString> paired = addresses(parseDevices(run({QStringLiteral("devices"), QStringLiteral("Paired")})));
-    const QSet<QString> connected =
-        addresses(parseDevices(run({QStringLiteral("devices"), QStringLiteral("Connected")})));
-
-    QVariantList connectedList;
-    QVariantList pairedList;
-    QVariantList nearbyList;
-    for (const Entry& entry : all) {
-        const bool isPaired = paired.contains(entry.address);
-        const bool isConnected = connected.contains(entry.address);
-        if (!isPaired && !isConnected && unnamed(entry)) {
-            continue;
-        }
-        QVariantMap device;
-        device.insert(QStringLiteral("address"), entry.address);
-        device.insert(QStringLiteral("name"), entry.name);
-        device.insert(QStringLiteral("paired"), isPaired);
-        device.insert(QStringLiteral("connected"), isConnected);
-        (isConnected ? connectedList : isPaired ? pairedList : nearbyList).append(device);
+    if (!enabled_) {
+        return;
     }
-    devices_ = connectedList + pairedList + nearbyList;
+    const QList<BluetoothEntry> all = parseDeviceList(run({QStringLiteral("devices")}));
+    const QSet<QString> paired =
+        addressesOf(parseDeviceList(run({QStringLiteral("devices"), QStringLiteral("Paired")})));
+    const QSet<QString> connected =
+        addressesOf(parseDeviceList(run({QStringLiteral("devices"), QStringLiteral("Connected")})));
+    devices_ = buildDeviceList(all, paired, connected);
     emit devicesChanged();
 }
 
 void BluetoothDevices::scan() {
-    if (scanning_) {
+    if (!enabled_ || scanning_) {
         return;
     }
     QProcess::execute(QStringLiteral("bluetoothctl"), {QStringLiteral("power"), QStringLiteral("on")});
@@ -158,7 +109,7 @@ void BluetoothDevices::scan() {
 }
 
 void BluetoothDevices::runAction(const QString& script, const QString& doing, const QString& done) {
-    if (busy_) {
+    if (!enabled_ || busy_) {
         return;
     }
     busy_ = true;
@@ -168,7 +119,7 @@ void BluetoothDevices::runAction(const QString& script, const QString& doing, co
 }
 
 void BluetoothDevices::connectDevice(const QString& address) {
-    if (!validAddress(address) || busy_) {
+    if (!enabled_ || !isValidAddress(address) || busy_) {
         return;
     }
     if (isPaired(address)) {
@@ -181,7 +132,7 @@ void BluetoothDevices::connectDevice(const QString& address) {
 
 void BluetoothDevices::pairWithPin(const QString& address, int pinIndex) {
     const QString name = nameOf(address);
-    const QString devicePath = QStringLiteral("/org/bluez/hci0/dev_") + QString(address).replace(':', '_');
+    const QString devicePath = devicePathFor(address);
     const QString pin = pins_.at(pinIndex);
     agent_.setTarget(devicePath, pin);
     setStatus(QStringLiteral("Pairing with %1 (PIN %2 if asked)…").arg(name, pin));
@@ -243,7 +194,7 @@ void BluetoothDevices::connectPaired(const QString& address) {
 }
 
 void BluetoothDevices::disconnectDevice(const QString& address) {
-    if (!validAddress(address)) {
+    if (!isValidAddress(address)) {
         return;
     }
     const QString name = nameOf(address);
@@ -252,7 +203,7 @@ void BluetoothDevices::disconnectDevice(const QString& address) {
 }
 
 void BluetoothDevices::forgetDevice(const QString& address) {
-    if (!validAddress(address)) {
+    if (!isValidAddress(address)) {
         return;
     }
     const QString name = nameOf(address);

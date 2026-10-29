@@ -1,0 +1,52 @@
+name: Soak
+
+# Long fuzz and UI monkey runs: too slow for every commit, run nightly and on demand.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      taps:
+        description: Random UI taps
+        default: "100000"
+      fuzz:
+        description: Config fuzz iterations
+        default: "2000000"
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Fuzz and UI soak (${{ matrix.build }})
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:bookworm
+      options: --cap-add=SYS_PTRACE
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [release, sanitizers]
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      HEADUNIT_STRESS_TAPS: ${{ inputs.taps || '100000' }}
+      HEADUNIT_FUZZ_ITERATIONS: ${{ inputs.fuzz || '2000000' }}
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - name: Bootstrap container
+        run: apt-get update && apt-get install -y --no-install-recommends sudo git make ca-certificates
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: make deps deps-qa
+      - name: Build the shell
+        run: |
+          flags="-DHEADUNIT_SOAK_TIMEOUT=9000"
+          [ "${{ matrix.build }}" = sanitizers ] && flags="$flags -DHEADUNIT_SANITIZE=address,undefined -DCMAKE_BUILD_TYPE=Debug"
+          make headunit CMAKE_FLAGS="$flags"
+      - name: Soak
+        run: ctest --test-dir raspi-headunit/build --output-on-failure -L 'fuzz|stress'

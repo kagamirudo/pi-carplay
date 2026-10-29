@@ -1,7 +1,8 @@
 sh /etc/xdg/labwc/autostart &
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-# Head-unit panel underneath, Android Auto projection on top of it.
-@HEADUNIT@ >> /tmp/headunit.log 2>&1 &
+# Head-unit panel underneath, Android Auto projection on top of it. Both are
+# restarted if they exit; logs are in ~/.local/state/pi-carplay/.
+@SUPERVISE@ headunit @HEADUNIT@ &
 sleep 3
-@AUTOAPP_LAUNCHER@ >> /tmp/autoapp.log 2>&1 &
+@SUPERVISE@ autoapp @AUTOAPP_LAUNCHER@ &

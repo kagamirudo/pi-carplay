@@ -5,7 +5,7 @@
 #   pi-carplay-setup --boot   also add the display overlay to config.txt (sudo)
 set -eu
 
-SHARE=/opt/pi-carplay/share
+SHARE=${PI_CARPLAY_SHARE:-/opt/pi-carplay/share}
 LABWC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/labwc"
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -24,7 +24,7 @@ done
 echo "Installed labwc touch calibration and autostart in $LABWC_DIR"
 
 if [ "${1:-}" = "--boot" ]; then
-  /usr/bin/pi-carplay-boot-config
+  "${PI_CARPLAY_BOOT_CONFIG:-/usr/bin/pi-carplay-boot-config}"
 fi
 
 echo

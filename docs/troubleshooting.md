@@ -21,7 +21,7 @@ Switching the output off and on re-runs the panel's init sequence.
 
 ## Black screen while Android Auto is "running"
 
-The video stream stalled. This usually follows a dropped session (`SSL_READ` error 26 or USB transfer error 10 in `/tmp/autoapp.log`). Fix:
+The video stream stalled. This usually follows a dropped session (`SSL_READ` error 26 or USB transfer error 10 in `~/.local/state/pi-carplay/autoapp.log`). Fix:
 
 ```sh
 make restart
@@ -71,10 +71,17 @@ Change it in `/boot/firmware/config.txt` and reboot.
 - The status line shows which PIN was tried. If the car wants a different fixed PIN, edit `pins_` in `raspi-headunit/src/bluetooth/BluetoothDevices.hpp`.
 - If the shell shows `Pairing agent: …` at start-up, another program holds the default agent. The shell's agent takes over by default, so restart the shell after closing the other program.
 
+## The shell or Android Auto keeps restarting
+
+Both programs run under `pi-carplay-supervise`, which starts them again when they exit: after 1 s, then doubling up to 30 s while they keep failing. Each exit is a line in `~/.local/state/pi-carplay/crashes.log`. Run `pi-carplay-selftest` and look at the end of the matching log. Under-voltage (`vcgencmd get_throttled` not `0x0`) is the most common cause.
+
+If the Setup page says **Settings were reset**, the saved `headunit.json` could not be read. It was moved to `headunit.json.corrupt` next to it and the shell started on defaults.
+
 ## Logs
 
 | File | Contents |
 | --- | --- |
-| `/tmp/autoapp.log` | OpenAuto / aasdk session log |
-| `/tmp/headunit.log` | Shell (JSON lines) |
+| `~/.local/state/pi-carplay/autoapp.log` | OpenAuto / aasdk session log |
+| `~/.local/state/pi-carplay/headunit.log` | Shell (JSON lines) |
+| `~/.local/state/pi-carplay/crashes.log` | Every exit or crash of either program, with time and signal; the supervisor restarted each one |
 | `journalctl -u bluetooth` | BlueZ |

@@ -38,10 +38,11 @@ After pairing, the device is marked *trusted* so it reconnects on its own. The P
 
 ```sh
 make restart    # restart the shell and Android Auto, re-plug the phone
-make status     # running processes, power status, display overlay, recent log
+make status     # running processes, supervisors, power, display overlay, recent crashes
+make selftest   # full on-device health check (also: pi-carplay-selftest)
 ```
 
-Logs: `/tmp/autoapp.log` (Android Auto) and `/tmp/headunit.log` (shell).
+Logs are in `~/.local/state/pi-carplay/`: `autoapp.log` (Android Auto), `headunit.log` (shell) and `crashes.log` (every restart). Logs rotate at 2 MiB.
 
 ### Optional colour correction
 

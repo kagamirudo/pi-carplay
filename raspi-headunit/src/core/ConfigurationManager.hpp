@@ -51,6 +51,8 @@ struct ParseResult {
 
 class ConfigurationManager {
 public:
+    static constexpr std::uintmax_t kMaxFileBytes = 64 * 1024;
+
     static ParseResult parse(std::string_view text);
     static std::string serialize(const AppConfig& config);
 

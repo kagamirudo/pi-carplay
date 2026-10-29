@@ -20,7 +20,8 @@ class BluetoothDevices : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY stateChanged)
 
 public:
-    explicit BluetoothDevices(QObject* parent = nullptr);
+    // With enabled false (or when BlueZ is not running) every action is a no-op.
+    explicit BluetoothDevices(bool enabled = true, QObject* parent = nullptr);
 
     QVariantList devices() const { return devices_; }
     bool scanning() const { return scanning_; }
@@ -38,7 +39,6 @@ signals:
     void stateChanged();
 
 private:
-    static bool validAddress(const QString& address);
     static QString run(const QStringList& args, int timeoutMs = 4000);
     void runAction(const QString& script, const QString& doing, const QString& done);
     void setStatus(const QString& status);
@@ -54,6 +54,7 @@ private:
     QProcess scanProcess_;
     QProcess actionProcess_;
     QTimer scanRefresh_;
+    bool enabled_ = true;
     bool scanning_ = false;
     bool busy_ = false;
     QString status_;

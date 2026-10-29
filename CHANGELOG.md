@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Crash recovery:** `pi-carplay-supervise` runs the shell and Android Auto, restarts either one if it exits (back-off from 1 s to 30 s), records each crash in `~/.local/state/pi-carplay/crashes.log`, and rotates the logs. Autostart and `pi-carplay-restart` use it.
+- **`pi-carplay-selftest`** (and `make selftest`): on-device check of power, temperature, display, touch, Bluetooth, audio, udev rule, autostart and recent crashes.
+- **Test suite:** Qt Test unit, D-Bus integration, UI and smoke tests, a seeded UI monkey test, config fuzzing, and bats tests for the scripts. `make check` runs every gate.
+- **Quality pipeline:** every pull request, push and release runs lint, static analysis, `-Werror` builds, all tests, ASan/UBSan, a coverage floor and a clean-system install test of the `.deb`. Nightly soak workflow.
+- Quality policy with the release procedure and hardware checklist, a testing guide, contributing guide, and pull request and bug report templates.
+
+### Changed
+
+- Logs moved from `/tmp` to `~/.local/state/pi-carplay/`, so they survive a reboot.
+- The Android accessory udev rule grants access to the logged-in user and `plugdev` (`0660`, `uaccess`) instead of every user (`0666`).
+
+### Fixed
+
+- A corrupt, empty or unreadable `headunit.json` no longer stops the shell from starting. It is moved aside, the shell starts on defaults and the Setup page says so.
+- Deeply nested JSON in the config could overflow the stack; nesting and file size are now limited.
+- Saved settings could be lost if power was cut right after saving; the file is now flushed to disk before it replaces the old one.
+- Tapping the current page's tab un-highlighted it and broke the highlight for later taps.
+- Bluetooth list rows with missing fields produced QML errors.
+- The pairing agent could crash if a rejection happened outside a D-Bus call.
+- Bundled libraries in the `.deb` were marked executable; `postinst` ran `ldconfig` needlessly.
+
 ## [0.1.0] - 2026-10-29
 
 First release: a working wired Android Auto head unit on a Raspberry Pi 5 with a 3.5″ SPI touchscreen.

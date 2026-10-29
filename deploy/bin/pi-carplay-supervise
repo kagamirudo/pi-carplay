@@ -1,0 +1,152 @@
+#!/bin/bash
+# Keep one program of the head unit running for the life of the desktop session.
+#
+#   pi-carplay-supervise NAME COMMAND [ARGS...]   run and restart COMMAND
+#   pi-carplay-supervise --stop NAME              stop it (and its program)
+#   pi-carplay-supervise --status [NAME]          show what is supervised
+#
+# A program that exits is started again after a back-off: 1 s, doubling up to
+# 30 s while it keeps failing quickly, back to 1 s once it has run for a
+# minute. Output goes to $STATE_DIR/NAME.log (rotated), each exit is recorded
+# in $STATE_DIR/crashes.log. Supervision ends when the Wayland session does.
+set -u
+
+STATE_DIR=${PI_CARPLAY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-carplay}
+RUN_DIR=${PI_CARPLAY_RUN_DIR:-${XDG_RUNTIME_DIR:-/tmp}/pi-carplay-$(id -u)}
+MAX_LOG_BYTES=${PI_CARPLAY_MAX_LOG_BYTES:-2097152}
+MAX_CRASH_LINES=${PI_CARPLAY_MAX_CRASH_LINES:-1000}
+MAX_DELAY=${PI_CARPLAY_MAX_DELAY:-30}
+HEALTHY_AFTER=${PI_CARPLAY_HEALTHY_AFTER:-60}
+
+usage() {
+  sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+valid_name() {
+  case "$1" in
+    ''|*[!A-Za-z0-9_-]*) echo "pi-carplay-supervise: bad name '$1'" >&2; exit 2 ;;
+  esac
+}
+
+# The supervisor's pid, if the pid file names a live supervisor (not a reused pid).
+running_pid() {
+  local pid
+  pid=$(cat "$RUN_DIR/$1.pid" 2>/dev/null) || return 1
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "pi-carplay-supervise $1 " || return 1
+  echo "$pid"
+}
+
+if [ "${1:-}" = --stop ]; then
+  valid_name "${2:-}"
+  pid=$(running_pid "$2") || exit 0
+  kill -TERM "$pid"
+  for _ in $(seq 1 50); do
+    kill -0 "$pid" 2>/dev/null || exit 0
+    sleep 0.1
+  done
+  kill -KILL "$pid" 2>/dev/null
+  rm -f "$RUN_DIR/$2.pid"
+  exit 0
+fi
+
+if [ "${1:-}" = --status ]; then
+  shopt -s nullglob
+  for f in "$RUN_DIR"/*.pid; do
+    n=$(basename "$f" .pid)
+    [ -n "${2:-}" ] && [ "$n" != "$2" ] && continue
+    if pid=$(running_pid "$n"); then echo "$n running (supervisor $pid)"; else echo "$n stopped"; fi
+  done
+  exit 0
+fi
+
+[ $# -ge 2 ] || usage
+NAME=$1
+shift
+valid_name "$NAME"
+mkdir -p "$STATE_DIR" "$RUN_DIR"
+LOG=$STATE_DIR/$NAME.log
+CRASHES=$STATE_DIR/crashes.log
+
+if pid=$(running_pid "$NAME"); then
+  echo "pi-carplay-supervise: $NAME is already supervised by $pid" >&2
+  exit 0
+fi
+echo $$ > "$RUN_DIR/$NAME.pid"
+
+child=""
+stopping=0
+# shellcheck disable=SC2317  # runs from the trap below
+on_stop() {
+  stopping=1
+  if [ -n "$child" ]; then
+    kill -TERM "$child" 2>/dev/null
+    for _ in $(seq 1 30); do
+      kill -0 "$child" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$child" 2>/dev/null
+  fi
+  [ "$(cat "$RUN_DIR/$NAME.pid" 2>/dev/null)" = $$ ] && rm -f "$RUN_DIR/$NAME.pid"
+  exit 0
+}
+trap on_stop TERM INT HUP
+
+session_alive() {
+  [ -z "${WAYLAND_DISPLAY:-}" ] && return 0
+  case "$WAYLAND_DISPLAY" in
+    /*) [ -S "$WAYLAND_DISPLAY" ] ;;
+    *) [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$WAYLAND_DISPLAY" ] ;;
+  esac
+}
+
+rotate() {
+  local size
+  size=$(stat -c %s "$1" 2>/dev/null || echo 0)
+  if [ "$size" -gt "$MAX_LOG_BYTES" ]; then
+    mv -f "$1" "$1.1"
+  fi
+}
+
+record() {
+  local line
+  line="$(date -u +%Y-%m-%dT%H:%M:%SZ) $NAME $1 after ${2}s"
+  echo "$line" >> "$CRASHES"
+  if [ "$(wc -l < "$CRASHES")" -gt "$MAX_CRASH_LINES" ]; then
+    tail -n "$MAX_CRASH_LINES" "$CRASHES" > "$CRASHES.tmp" && mv -f "$CRASHES.tmp" "$CRASHES"
+  fi
+  command -v logger >/dev/null && logger -t pi-carplay -- "$line"
+}
+
+delay=1
+while [ "$stopping" -eq 0 ]; do
+  if ! session_alive; then
+    echo "$(date -u +%FT%TZ) session ended, not restarting $NAME" >> "$LOG"
+    break
+  fi
+  rotate "$LOG"
+  started=$(date +%s)
+  "$@" >> "$LOG" 2>&1 &
+  child=$!
+  wait "$child"
+  code=$?
+  child=""
+  ran=$(( $(date +%s) - started ))
+  if [ "$code" -gt 128 ]; then
+    how="killed by $(kill -l $((code - 128)) 2>/dev/null || echo "signal $((code - 128)))")"
+  else
+    how="exited with $code"
+  fi
+  record "$how" "$ran"
+  if [ "$ran" -ge "$HEALTHY_AFTER" ]; then
+    delay=1
+  fi
+  echo "$(date -u +%FT%TZ) $NAME $how; restarting in ${delay}s" >> "$LOG"
+  sleep "$delay" &
+  wait $!
+  delay=$(( delay * 2 > MAX_DELAY ? MAX_DELAY : delay * 2 ))
+done
+
+[ "$(cat "$RUN_DIR/$NAME.pid" 2>/dev/null)" = $$ ] && rm -f "$RUN_DIR/$NAME.pid"
+exit 0

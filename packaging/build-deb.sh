@@ -29,6 +29,7 @@ mkdir -p "$STAGE/DEBIAN" "$STAGE/$PREFIX"/{bin,lib,share/labwc} "$STAGE/usr/bin"
 
 render() {
   sed -e "s|@HEADUNIT@|/$PREFIX/bin/headunit|g" \
+      -e "s|@SUPERVISE@|/usr/bin/pi-carplay-supervise|g" \
       -e "s|@AUTOAPP_LAUNCHER@|/usr/bin/pi-carplay-autoapp|g" \
       -e "s|@AUTOAPP@|/$PREFIX/bin/autoapp|g" \
       -e "s|@OPENAUTO_DIR@|\$HOME/.config/pi-carplay/openauto|g" \
@@ -48,6 +49,7 @@ while read -r lib path; do
   cp -L "$path" "$STAGE/$PREFIX/lib/$lib"
 done < <(ldd "$AUTOAPP_BIN" | awk '$2 == "=>" {print $1, $3}')
 strip --strip-unneeded "$STAGE/$PREFIX/bin"/* "$STAGE/$PREFIX/lib"/*.so*
+chmod 0644 "$STAGE/$PREFIX/lib"/*.so*
 for f in "$STAGE/$PREFIX/bin/autoapp" "$STAGE/$PREFIX/lib"/*.so*; do
   # shellcheck disable=SC2016  # $ORIGIN is resolved by the dynamic loader
   patchelf --set-rpath '$ORIGIN/../lib' "$f"
@@ -56,7 +58,8 @@ done
 # Launchers and setup helpers
 render "$REPO/deploy/bin/pi-carplay-autoapp" > "$STAGE/usr/bin/pi-carplay-autoapp"
 render "$REPO/deploy/bin/aa-restart.sh" > "$STAGE/usr/bin/pi-carplay-restart"
-install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$STAGE/usr/bin/"
+install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-carplay-supervise" \
+  "$REPO/tools/pi-carplay-selftest" "$STAGE/usr/bin/"
 install -m 0755 "$REPO/packaging/pi-carplay-setup" "$STAGE/usr/bin/"
 chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restart"
 

@@ -6,11 +6,33 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(HEADUNIT_WERROR "Treat compiler warnings as errors" OFF)
+set(HEADUNIT_SANITIZE "" CACHE STRING "Comma-separated -fsanitize= list, e.g. address,undefined")
+option(HEADUNIT_COVERAGE "Instrument for gcov line and branch coverage" OFF)
+option(HEADUNIT_TESTS "Build the test suite" ON)
+
 find_package(Threads REQUIRED)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core DBus Gui Qml Quick)
 qt_standard_project_setup()
 
-add_library(headunit_core
+# Warnings, sanitizers and coverage apply to every target built here.
+add_library(headunit_flags INTERFACE)
+target_compile_options(headunit_flags INTERFACE -Wall -Wextra -Wpedantic)
+if(HEADUNIT_WERROR)
+    target_compile_options(headunit_flags INTERFACE -Werror)
+endif()
+if(HEADUNIT_SANITIZE)
+    target_compile_options(headunit_flags INTERFACE -fsanitize=${HEADUNIT_SANITIZE} -fno-omit-frame-pointer
+                                                    -fno-sanitize-recover=all)
+    target_link_options(headunit_flags INTERFACE -fsanitize=${HEADUNIT_SANITIZE})
+    target_compile_definitions(headunit_flags INTERFACE HEADUNIT_SANITIZED=1)
+endif()
+if(HEADUNIT_COVERAGE)
+    target_compile_options(headunit_flags INTERFACE --coverage -O0)
+    target_link_options(headunit_flags INTERFACE --coverage)
+endif()
+
+add_library(headunit_core STATIC
     src/core/Log.cpp
     src/core/ConfigurationManager.cpp
     src/core/ApplicationManager.cpp
@@ -28,45 +50,44 @@ add_library(headunit_core
     src/input/TouchInputManager.cpp
 )
 target_include_directories(headunit_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(headunit_core PUBLIC Threads::Threads)
-target_compile_options(headunit_core PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(headunit_core PUBLIC Threads::Threads headunit_flags)
 
-qt_add_executable(headunit
-    src/main.cpp
+# Qt objects exposed to QML, shared by the executable and the tests.
+add_library(headunit_shell STATIC
     src/core/ShellPresenter.cpp
     src/core/ShellPresenter.hpp
     src/bluetooth/BluetoothDevices.cpp
     src/bluetooth/BluetoothDevices.hpp
     src/bluetooth/BluetoothAgent.cpp
     src/bluetooth/BluetoothAgent.hpp
+    src/bluetooth/DeviceList.cpp
+    src/bluetooth/DeviceList.hpp
 )
+target_link_libraries(headunit_shell PUBLIC Qt6::Core Qt6::DBus headunit_core)
+target_compile_definitions(headunit_shell PUBLIC HEADUNIT_VERSION="${PROJECT_VERSION}")
+
+set(HEADUNIT_QML_FILES
+    ui/Main.qml
+    ui/HomePage.qml
+    ui/ConnectionPage.qml
+    ui/DashcamPage.qml
+    ui/SettingsPage.qml
+    ui/BluetoothPage.qml
+    ui/ActionButton.qml
+)
+
+qt_add_executable(headunit src/main.cpp)
 qt_add_qml_module(headunit
     URI Headunit
     VERSION 1.0
-    QML_FILES
-        ui/Main.qml
-        ui/HomePage.qml
-        ui/ConnectionPage.qml
-        ui/DashcamPage.qml
-        ui/SettingsPage.qml
-        ui/BluetoothPage.qml
-        ui/ActionButton.qml
+    QML_FILES ${HEADUNIT_QML_FILES}
 )
-target_link_libraries(headunit PRIVATE Qt6::Core Qt6::DBus Qt6::Gui Qt6::Qml Qt6::Quick headunit_core)
-target_compile_definitions(headunit PRIVATE HEADUNIT_VERSION="${PROJECT_VERSION}")
-target_compile_options(headunit PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(headunit PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick headunit_shell)
 
-enable_testing()
-add_executable(headunit_tests
-    tests/test_main.cpp
-    tests/config_test.cpp
-    tests/storage_test.cpp
-    tests/phone_test.cpp
-)
-target_include_directories(headunit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(headunit_tests PRIVATE headunit_core)
-target_compile_options(headunit_tests PRIVATE -Wall -Wextra -Wpedantic)
-add_test(NAME headunit_tests COMMAND headunit_tests)
+if(HEADUNIT_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 install(TARGETS headunit RUNTIME DESTINATION bin)
 install(FILES config/headunit.json DESTINATION share/raspi-headunit)

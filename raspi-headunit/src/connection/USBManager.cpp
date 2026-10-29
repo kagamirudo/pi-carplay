@@ -23,7 +23,7 @@ std::string readTrimmed(const std::filesystem::path& path) {
 
 std::vector<USBManager::Device> USBManager::listDevices() const {
     std::vector<Device> devices;
-    const std::filesystem::path root("/sys/bus/usb/devices");
+    const std::filesystem::path& root = root_;
     std::error_code ec;
     if (!std::filesystem::is_directory(root, ec)) {
         return devices;

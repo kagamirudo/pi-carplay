@@ -17,7 +17,7 @@ if grep -q '^dtoverlay=piscreen' "$BOOT_CFG"; then
 fi
 
 SUDO=""
-[ "$(id -u)" -eq 0 ] || SUDO=sudo
+[ -w "$BOOT_CFG" ] && [ -w "$(dirname "$BOOT_CFG")" ] || SUDO=sudo
 $SUDO cp "$BOOT_CFG" "$BOOT_CFG.bak"
 printf '\n[all]\n# 3.5" SPI hat (ILI9486 + ADS7846), DRM driver. 32 MHz is the panel maximum.\n%s\n' "$OVERLAY" \
   | $SUDO tee -a "$BOOT_CFG" >/dev/null

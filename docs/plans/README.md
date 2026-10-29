@@ -18,3 +18,4 @@ Design and implementation plans for pi-carplay. Each plan is one Markdown file, 
 | Plan | Status | Date | Summary |
 | --- | --- | --- | --- |
 | [0001](0001-pi5-head-unit-and-dash-cam.md) | Accepted | 2026-10-29 | Original project plan: hardware baseline, stack, requirements and phased roadmap for the Pi 5 head unit and dash cam. |
+| [0002](0002-ota-updates.md) | Proposed | 2026-10-29 | Over-the-air updates from GitHub Releases over the phone's or home internet: signed manifest, safe install when parked, automatic rollback. |

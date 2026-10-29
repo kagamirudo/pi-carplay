@@ -1,0 +1,162 @@
+#!/bin/bash
+# Check GitHub Releases for a newer pi-carplay package. Read-only: it never
+# downloads or installs anything (see docs/plans/0002-ota-updates.md for the full update design).
+#
+#   pi-carplay-update check [--json] [--channel stable|beta] [--timeout SECONDS]
+#
+# Exit status: 0 up to date, 10 update available, 2 usage, 3 offline or
+# timed out, 4 bad or refused answer (HTTP error, rate limit, no package),
+# 5 pi-carplay is not installed as a package (nothing to compare against).
+set -u
+
+API_URL=${PI_CARPLAY_UPDATE_URL:-https://api.github.com/repos/kagamirudo/pi-carplay}
+CHANNEL=${PI_CARPLAY_UPDATE_CHANNEL:-stable}
+TIMEOUT=${PI_CARPLAY_UPDATE_TIMEOUT:-15}
+PYTHON=${PI_CARPLAY_PYTHON:-python3}
+PKG=pi-carplay
+
+usage() {
+  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+[ "${1:-}" = check ] || usage
+shift
+JSON=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1 ;;
+    --channel) CHANNEL=${2:-}; shift ;;
+    --timeout) TIMEOUT=${2:-}; shift ;;
+    -h|--help) usage ;;
+    *) echo "pi-carplay-update: unknown option '$1'" >&2; usage ;;
+  esac
+  shift
+done
+case "$CHANNEL" in stable|beta) ;; *) echo "pi-carplay-update: channel must be stable or beta" >&2; exit 2 ;; esac
+case "$TIMEOUT" in ''|*[!0-9]*|0) echo "pi-carplay-update: timeout must be a positive number of seconds" >&2; exit 2 ;; esac
+
+ARCH=${PI_CARPLAY_ARCH:-$(dpkg --print-architecture)}
+if [ -n "${PI_CARPLAY_INSTALLED_VERSION+set}" ]; then
+  INSTALLED=$PI_CARPLAY_INSTALLED_VERSION
+else
+  INSTALLED=$(dpkg-query -W -f='${db:Status-Status} ${Version}' "$PKG" 2>/dev/null | sed -n 's/^installed //p')
+fi
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# Print the result as JSON (--json) or text, then exit with $1.
+# report CODE STATUS [MESSAGE]; release fields come from the globals below.
+LATEST="" PRERELEASE="" PUBLISHED="" ASSET="" SIZE="" SHA256="" ASSET_URL="" RELEASE_URL=""
+report() {
+  local code=$1 status=$2 message=${3:-}
+  if [ "$JSON" -eq 1 ]; then
+    "$PYTHON" - "$status" "$message" "$CHANNEL" "$INSTALLED" "$LATEST" "$PRERELEASE" "$PUBLISHED" \
+      "$ASSET" "$SIZE" "$SHA256" "$ASSET_URL" "$RELEASE_URL" <<'EOF'
+import json, sys
+(status, message, channel, installed, latest, prerelease, published,
+ asset, size, sha256, asset_url, release_url) = sys.argv[1:]
+out = {"schema": 1, "status": status, "channel": channel, "installed": installed or None}
+if message:
+    out["error" if status == "error" else "message"] = message
+if latest:
+    out.update({"latest": latest, "prerelease": prerelease == "true", "published_at": published or None,
+                "release_url": release_url or None,
+                "asset": {"name": asset, "size": int(size), "sha256": sha256 or None, "url": asset_url}})
+print(json.dumps(out, indent=2))
+EOF
+  else
+    if [ "$status" = error ]; then
+      echo "pi-carplay-update: $message" >&2
+    else
+      echo "installed: ${INSTALLED:-not installed as a package}"
+      echo "latest:    $LATEST ($CHANNEL$([ "$PRERELEASE" = true ] && echo ", prerelease"), published ${PUBLISHED:-?})"
+      echo "package:   $ASSET, $((SIZE / 1024)) KiB${SHA256:+, sha256:$SHA256}"
+      echo "notes:     $RELEASE_URL"
+      echo "status:    $status${message:+ ($message)}"
+    fi
+  fi
+  exit "$code"
+}
+
+if [ "$CHANNEL" = stable ]; then
+  endpoint=$API_URL/releases/latest
+else
+  endpoint="$API_URL/releases?per_page=20"
+fi
+
+auth=()
+[ -n "${PI_CARPLAY_GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $PI_CARPLAY_GITHUB_TOKEN")
+http=$(curl -sS -L --proto '=https,http' --connect-timeout "$(( TIMEOUT < 5 ? TIMEOUT : 5 ))" --max-time "$TIMEOUT" \
+  -A "pi-carplay-update/${INSTALLED:-none}" -H 'Accept: application/vnd.github+json' \
+  -H 'X-GitHub-Api-Version: 2022-11-28' "${auth[@]}" \
+  -D "$WORK/headers" -o "$WORK/body" -w '%{http_code}' "$endpoint" 2> "$WORK/curl.err")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  case "$rc" in
+    6) why="cannot resolve the update server (offline?)" ;;
+    7) why="cannot connect to the update server (offline?)" ;;
+    28) why="no answer from the update server within ${TIMEOUT} s" ;;
+    *) why="download failed: $(tr -d '\r' < "$WORK/curl.err" | tail -n 1)" ;;
+  esac
+  report 3 error "$why"
+fi
+
+header() { tr -d '\r' < "$WORK/headers" | awk -v h="$1" 'tolower($1) == tolower(h) ":" {v = $2} END {print v}'; }
+case "$http" in
+  200) ;;
+  403|429)
+    if [ "$(header x-ratelimit-remaining)" = 0 ]; then
+      reset=$(header x-ratelimit-reset)
+      report 4 error "GitHub API rate limit reached; try again after $(date -d "@${reset:-0}" '+%H:%M' 2>/dev/null || echo later)"
+    fi
+    report 4 error "update server refused the request (HTTP $http)" ;;
+  404) report 4 error "no $CHANNEL release published yet (HTTP 404)" ;;
+  *) report 4 error "unexpected answer from the update server (HTTP $http)" ;;
+esac
+
+# One line per published (non-draft) release that has a .deb for this
+# architecture: version, prerelease, published, asset, size, sha256, url, page.
+if ! "$PYTHON" - "$PKG" "$ARCH" "$CHANNEL" "$WORK/body" > "$WORK/releases" 2> "$WORK/py.err" <<'EOF'
+import json, re, sys
+pkg, arch, channel, body = sys.argv[1:]
+with open(body, encoding="utf-8") as f:
+    data = json.load(f)
+releases = data if isinstance(data, list) else [data]
+pattern = re.compile(r"^%s_(.+)_%s\.deb$" % (re.escape(pkg), re.escape(arch)))
+clean = lambda v: re.sub(r"[\t\n\r]", " ", str(v or ""))
+for r in releases:
+    if not isinstance(r, dict) or r.get("draft") or (r.get("prerelease") and channel == "stable"):
+        continue
+    for a in r.get("assets") or []:
+        m = pattern.match(a.get("name") or "")
+        digest = a.get("digest") or ""
+        if m and a.get("browser_download_url"):
+            print("\t".join(clean(x) for x in (
+                m.group(1), "true" if r.get("prerelease") else "false", r.get("published_at"), a["name"],
+                int(a.get("size") or 0), digest[7:] if digest.startswith("sha256:") else "",
+                a["browser_download_url"], r.get("html_url"))))
+            break
+EOF
+then
+  report 4 error "cannot parse the release list: $(tail -n 1 "$WORK/py.err")"
+fi
+
+# The newest version wins, whatever order the server listed them in.
+while IFS=$'\t' read -r v pre pub name size sha url page; do
+  if [ -z "$LATEST" ] || dpkg --compare-versions "$v" gt "$LATEST"; then
+    LATEST=$v PRERELEASE=$pre PUBLISHED=$pub ASSET=$name SIZE=$size SHA256=$sha ASSET_URL=$url RELEASE_URL=$page
+  fi
+done < "$WORK/releases"
+[ -n "$LATEST" ] || report 4 error "no $CHANNEL release has a ${PKG}_*_${ARCH}.deb"
+
+if [ -z "$INSTALLED" ]; then
+  report 5 not-installed "install the .deb first; source installs are not updated"
+elif dpkg --compare-versions "$LATEST" gt "$INSTALLED"; then
+  report 10 update-available
+elif dpkg --compare-versions "$LATEST" eq "$INSTALLED"; then
+  report 0 up-to-date
+else
+  report 0 up-to-date "installed build is newer than the latest release"
+fi

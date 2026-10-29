@@ -55,6 +55,8 @@ The release attaches:
 | `pi-carplay-<version>-gpl-source.tar.gz` | Corresponding source for the GPL-3.0 OpenAuto and aasdk binaries, and the LGPL h264bitstream, with patches applied |
 | `SHA256SUMS` | Checksums |
 
+Over-the-air updates will build on these releases: a signed manifest per release and an on-device updater. The design and its phases are in [ota.md](plans/0002-ota-updates.md).
+
 ## What the package contains
 
 | Path | Contents |
@@ -71,6 +73,7 @@ The release attaches:
 | `/usr/bin/pi-carplay-selftest` | On-device health check |
 | `/usr/bin/pi-carplay-wireless-check` | Readiness check for wireless Android Auto (read-only) |
 | `/usr/bin/pi-carplay-wireless-setup` | Firmware, phone adapter and 5 GHz hotspot profile for wireless Android Auto (never starts it) |
+| `/usr/bin/pi-carplay-update` | `check` asks GitHub Releases whether a newer package exists. Read-only for now; see [ota.md](plans/0002-ota-updates.md) |
 | `/lib/udev/rules.d/51-android-accessory.rules` | Accessory-mode USB access for the desktop user |
 
 Runtime dependencies are worked out at build time from the libraries the shipped binaries link directly, plus the QML modules, Qt Wayland, Qt Multimedia plugins, BlueZ and `pactl`.

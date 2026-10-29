@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
   - wireless projection itself is not available yet
 - **Test suite:** Qt Test unit, D-Bus integration, UI and smoke tests, a seeded UI monkey test, config fuzzing, and bats tests for the scripts. `make check` runs every gate.
 - **Quality pipeline:** every pull request, push and release runs lint, static analysis, `-Werror` builds, all tests, ASan/UBSan, a coverage floor and a clean-system install test of the `.deb`. Nightly soak workflow.
+- **`pi-carplay-update check`:** asks GitHub Releases whether a newer package exists (text or `--json`; exit 10 when there is one). Read-only; the over-the-air update design is in `docs/plans/0002-ota-updates.md`.
 - Quality policy with the release procedure and hardware checklist, a testing guide, contributing guide, and pull request and bug report templates.
 - README screenshots of Android Auto on the 480×320 panel (dashboard and full-screen Maps), next to the head-unit shell, with map and personal details pixelated.
 

@@ -106,7 +106,8 @@ write_rule() {
 drop_labwc_matrix() {
   [ -n "$(labwc_matrix)" ] || return 1
   cp "$LABWC_RC" "$LABWC_RC.bak"
-  sed -i '/<calibrationMatrix>/d' "$LABWC_RC"
+  # Remove only the element, keeping anything else on the same line.
+  sed -i 's#<calibrationMatrix>[^<]*</calibrationMatrix>##' "$LABWC_RC"
   echo "Removed calibrationMatrix from $LABWC_RC (backup: $LABWC_RC.bak)"
 }
 

@@ -2,6 +2,10 @@
 
 #include <QTest>
 
+#include "input/TouchCalibrator.hpp"
+
+#include <linux/input.h>
+
 #include <cmath>
 #include <optional>
 #include <vector>
@@ -23,6 +27,17 @@ std::vector<CalibrationPoint> pointsFrom(const CalibrationMatrix& m) {
         pts.push_back({r[0], r[1], m[0] * r[0] + m[1] * r[1] + m[2], m[3] * r[0] + m[4] * r[1] + m[5]});
     }
     return pts;
+}
+
+// Feed one finger tap at raw device coords, as evdev would report it.
+void tap(headunit::TouchCalibrator& cal, int vx, int vy) {
+    cal.feedEvent(EV_KEY, BTN_TOUCH, 1);
+    for (int i = 0; i < 10; ++i) {
+        cal.feedEvent(EV_ABS, ABS_X, vx);
+        cal.feedEvent(EV_ABS, ABS_Y, vy);
+        cal.feedEvent(EV_SYN, SYN_REPORT, 0);
+    }
+    cal.feedEvent(EV_KEY, BTN_TOUCH, 0);
 }
 
 }  // namespace
@@ -91,6 +106,28 @@ private slots:
         QCOMPARE(*stableMedian({3, 1, 2}), 2.0);
         // >= 8 samples: the two extremes at each end are trimmed before the median.
         QCOMPARE(*stableMedian({999, 999, 5, 5, 5, 5, -999, -999}), 5.0);
+    }
+
+    void drivenTapsCalibrate() {
+        headunit::TouchCalibrator cal(480, 320, 60);
+        cal.setAxisRange(0, 1000, 0, 1000);
+        QCOMPARE(cal.steps(), 5);
+        for (int i = 0; i < 5; ++i) {
+            const QPointF t = cal.target();
+            tap(cal, qRound(t.x() / 480.0 * 1000.0), qRound(t.y() / 320.0 * 1000.0));
+        }
+        QCOMPARE(static_cast<int>(cal.outcome()), static_cast<int>(headunit::TouchCalibrator::Done));
+        QCOMPARE(cal.points().size(), size_t{5});
+        QVERIFY(cal.result().maxPixels < 20.0);
+    }
+
+    void inconsistentTapsRejected() {
+        headunit::TouchCalibrator cal(480, 320, 60);
+        cal.setAxisRange(0, 1000, 0, 1000);
+        for (int i = 0; i < 5; ++i) {
+            tap(cal, 500, 500);  // every tap in one spot: no affine fit
+        }
+        QCOMPARE(static_cast<int>(cal.outcome()), static_cast<int>(headunit::TouchCalibrator::Inconsistent));
     }
 };
 

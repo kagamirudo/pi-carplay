@@ -52,6 +52,8 @@ setup() {
   run "$TOOL" --matrix '1 0 0 0 -1 1'
   [ "$status" -eq 0 ]
   ! grep -q calibrationMatrix "$LABWC_RC"
+  # siblings on the same line must survive (only the element is removed)
+  grep -q '<labwc_config><core></core></labwc_config>' "$LABWC_RC"
   [ -e "$LABWC_RC.bak" ]
 }
 

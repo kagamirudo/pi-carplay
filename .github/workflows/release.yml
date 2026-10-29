@@ -1,0 +1,76 @@
+name: Release
+
+# Push a tag vX.Y.Z (matching the VERSION file) to build and publish a release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches VERSION
+        run: |
+          want="$(cat VERSION)"
+          if [ "${GITHUB_REF_NAME#v}" != "$want" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match VERSION ($want)"
+            exit 1
+          fi
+      - name: CHANGELOG has an entry
+        run: grep -q "^## \[${GITHUB_REF_NAME#v}\]" CHANGELOG.md
+
+  build:
+    name: Build
+    needs: check
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pi-carplay-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Release notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
+          cat >> notes.md <<EOF
+
+          ## Install on a Raspberry Pi 5 (Raspberry Pi OS Bookworm, 64-bit)
+
+          \`\`\`sh
+          wget https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/pi-carplay_${v}_arm64.deb
+          sudo apt install ./pi-carplay_${v}_arm64.deb
+          pi-carplay-setup --boot
+          sudo reboot
+          \`\`\`
+
+          \`pi-carplay-${v}-gpl-source.tar.gz\` is the corresponding source for the GPL-3.0 OpenAuto and aasdk binaries in the package.
+          EOF
+          cat notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "pi-carplay $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag

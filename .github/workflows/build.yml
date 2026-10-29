@@ -1,0 +1,77 @@
+name: Build
+
+# Reusable: builds the whole stack on Debian Bookworm arm64 (the Raspberry Pi OS
+# base), runs the tests and produces the .deb plus the GPL source tarball.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Package version. Defaults to the tag (vX.Y.Z) or VERSION~git<sha>.
+        type: string
+        required: false
+        default: ""
+    outputs:
+      version:
+        description: The package version that was built
+        value: ${{ jobs.arm64.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    name: Bookworm arm64
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      SRC_DIR: /opt/src
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends sudo git make ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            v="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v="$(cat VERSION)~git${GITHUB_SHA::7}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Building pi-carplay $v"
+
+      - name: Install dependencies
+        run: make deps
+
+      - name: Build h264bitstream, aasdk, OpenAuto and the shell
+        run: make build
+
+      - name: Test
+        run: make test
+
+      - name: Package
+        run: make package VERSION="${{ steps.version.outputs.version }}"
+
+      - name: Inspect package
+        run: |
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-carplay-${{ steps.version.outputs.version }}-arm64
+          path: dist/*
+          if-no-files-found: error

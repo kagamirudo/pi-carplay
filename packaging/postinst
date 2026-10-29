@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=usb || true
+  fi
+  ldconfig
+  cat <<'EOF'
+
+pi-carplay is installed. As the desktop user, run once:
+
+    pi-carplay-setup --boot
+
+then reboot. See /usr/share/doc/pi-carplay/README.md.
+EOF
+fi
+
+exit 0

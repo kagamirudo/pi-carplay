@@ -1,6 +1,7 @@
 #include "bluetooth/BluetoothDevices.hpp"
 
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusError>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
@@ -66,6 +67,12 @@ BluetoothDevices::BluetoothDevices(QObject* parent) : QObject(parent) {
         }
     });
     connect(&agent_, &BluetoothAgent::message, this, &BluetoothDevices::setStatus);
+    // bluetoothctl blocks waiting for bluetoothd when BlueZ is not running.
+    QDBusConnectionInterface* bus = QDBusConnection::systemBus().interface();
+    if (bus == nullptr || !bus->isServiceRegistered(QStringLiteral("org.bluez"))) {
+        status_ = QStringLiteral("Bluetooth service is not running.");
+        return;
+    }
     refresh();
     const QString agentError = agent_.registerWithBluez();
     status_ = agentError.isEmpty() ? QStringLiteral("Tap Scan, then put the car or speaker in pairing mode.")

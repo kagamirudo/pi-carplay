@@ -1,5 +1,10 @@
 # Installation
 
+There are two ways to install:
+
+- **Release package (fastest):** install the prebuilt `.deb`, as described in the [README](../README.md#option-a-install-the-release-package). Then do steps 1 and 7 below.
+- **From source:** the rest of this page.
+
 This walks through a fresh install with the `Makefile`. Every step can be re-run safely: fetching, patching and installing skip work that is already done.
 
 ## 1. Prepare the Pi
@@ -56,6 +61,7 @@ make install
 | `~/.config/labwc/rc.xml` | Touch calibration matrix for the ADS7846 and mouse emulation |
 | `~/.config/labwc/autostart` | Starts the shell, then Android Auto on top of it, at login |
 | `~/src/openauto/bin/openauto.ini` | OpenAuto settings: 800×480 stream, 80 px margin, DPI 130, touch on. An existing file is kept. |
+| `~/.local/bin/pi-carplay-autoapp` | Launches `autoapp` from its config directory, with OpenAuto's own window hidden |
 | `~/.local/bin/aa-restart.sh` | Restarts the shell and Android Auto and re-plugs the phone |
 
 Existing labwc files that differ are backed up to `*.bak` first.

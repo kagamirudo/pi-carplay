@@ -1,0 +1,31 @@
+#!/bin/sh
+# Per-user setup after installing the pi-carplay package.
+#
+#   pi-carplay-setup          labwc touch calibration + autostart for this user
+#   pi-carplay-setup --boot   also add the display overlay to config.txt (sudo)
+set -eu
+
+SHARE=/opt/pi-carplay/share
+LABWC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/labwc"
+
+if [ "$(id -u)" -eq 0 ]; then
+  echo "Run pi-carplay-setup as the desktop user, not root." >&2
+  exit 1
+fi
+
+mkdir -p "$LABWC_DIR"
+for f in rc.xml autostart; do
+  if [ -f "$LABWC_DIR/$f" ] && ! cmp -s "$LABWC_DIR/$f" "$SHARE/labwc/$f"; then
+    cp "$LABWC_DIR/$f" "$LABWC_DIR/$f.bak"
+    echo "Backed up $LABWC_DIR/$f to $f.bak"
+  fi
+  cp "$SHARE/labwc/$f" "$LABWC_DIR/$f"
+done
+echo "Installed labwc touch calibration and autostart in $LABWC_DIR"
+
+if [ "${1:-}" = "--boot" ]; then
+  /usr/bin/pi-carplay-boot-config
+fi
+
+echo
+echo "Log out and back in (or reboot) to start the head unit."

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Start OpenAuto's autoapp. It reads and writes openauto.ini in its working
+# directory, so run it from a per-user config directory seeded with defaults.
+set -eu
+
+CONF_DIR="${PI_CARPLAY_OPENAUTO_DIR:-@OPENAUTO_DIR@}"
+mkdir -p "$CONF_DIR"
+[ -f "$CONF_DIR/openauto.ini" ] || cp "@DEFAULT_INI@" "$CONF_DIR/openauto.ini"
+cd "$CONF_DIR"
+
+# The head-unit shell is the home screen; hide OpenAuto's own launcher window.
+export OPENAUTO_NO_MAIN_WINDOW="${OPENAUTO_NO_MAIN_WINDOW:-1}"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+exec "@AUTOAPP@" "$@"

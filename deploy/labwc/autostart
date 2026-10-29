@@ -2,7 +2,6 @@ sh /etc/xdg/labwc/autostart &
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # Head-unit panel underneath, Android Auto projection on top of it.
-@REPO@/raspi-headunit/build/headunit >> /tmp/headunit.log 2>&1 &
+@HEADUNIT@ >> /tmp/headunit.log 2>&1 &
 sleep 3
-cd @OPENAUTO_BIN@ || exit 1
-OPENAUTO_NO_MAIN_WINDOW=1 ./autoapp >> /tmp/autoapp.log 2>&1 &
+@AUTOAPP_LAUNCHER@ >> /tmp/autoapp.log 2>&1 &

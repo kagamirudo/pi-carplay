@@ -5,8 +5,8 @@
 # Run as the desktop user. sudo is used only to reset the USB port.
 set -u
 
-REPO=@REPO@
-OPENAUTO_BIN=@OPENAUTO_BIN@
+HEADUNIT=@HEADUNIT@
+AUTOAPP_LAUNCHER=@AUTOAPP_LAUNCHER@
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
@@ -19,9 +19,9 @@ sleep 0.5
 : > /tmp/autoapp.log
 : > /tmp/headunit.log
 
-"$REPO/raspi-headunit/build/headunit" >> /tmp/headunit.log 2>&1 &
+"$HEADUNIT" >> /tmp/headunit.log 2>&1 &
 sleep 3
-(cd "$OPENAUTO_BIN" && OPENAUTO_NO_MAIN_WINDOW=1 exec ./autoapp) >> /tmp/autoapp.log 2>&1 &
+"$AUTOAPP_LAUNCHER" >> /tmp/autoapp.log 2>&1 &
 sleep 2
 
 # Google accessory (18d1) and Samsung (04e8) phones: drop and re-authorize the port.

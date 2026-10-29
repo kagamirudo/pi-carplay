@@ -4,6 +4,7 @@
 #   make build       h264bitstream + aasdk + OpenAuto (patched) + head-unit shell
 #   make install     udev rule, labwc touch/autostart, OpenAuto config, restart script
 #   make boot-config add the SPI display overlay to /boot/firmware/config.txt (reboot after)
+#   make package     build dist/pi-carplay_<version>_arm64.deb and the GPL source tarball
 #
 # Run `make help` for every target.
 
@@ -17,6 +18,8 @@ JOBS      ?= $(shell nproc)
 BOOT_CFG  ?= /boot/firmware/config.txt
 LABWC_DIR ?= $(HOME)/.config/labwc
 BIN_DIR   ?= $(HOME)/.local/bin
+VERSION   ?= $(shell cat $(REPO)/VERSION)
+DIST_DIR  ?= $(REPO)/dist
 
 # Upstream revisions the patches in patches/ were made against.
 AASDK_URL     := https://github.com/openDsh/aasdk.git
@@ -30,7 +33,15 @@ HEADUNIT_DIR  := $(REPO)/raspi-headunit
 HEADUNIT_BIN  := $(HEADUNIT_DIR)/build/headunit
 OPENAUTO_BIN  := $(SRC_DIR)/openauto/bin
 
-OVERLAY_LINE  := dtoverlay=piscreen,drm,speed=32000000,rotate=180,invx,invy
+# Fill deploy/ templates for a from-source install.
+RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
+	-e 's|@AUTOAPP_LAUNCHER@|$(BIN_DIR)/pi-carplay-autoapp|g' \
+	-e 's|@AUTOAPP@|$(OPENAUTO_BIN)/autoapp|g' \
+	-e 's|@OPENAUTO_DIR@|$(OPENAUTO_BIN)|g' \
+	-e 's|@DEFAULT_INI@|$(REPO)/deploy/openauto/openauto.ini|g'
+
+SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
+	packaging/pi-carplay-setup packaging/postinst packaging/build-deb.sh
 
 APT_PACKAGES := \
 	build-essential cmake git pkg-config autoconf automake libtool \
@@ -42,7 +53,8 @@ APT_PACKAGES := \
 	qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
 	qml6-module-qtquick-templates qml6-module-qtquick-window qml6-module-qtqml \
 	qml6-module-qtqml-workerscript qml6-module-qtqml-models \
-	bluez pulseaudio-utils wlr-randr grim
+	bluez pulseaudio-utils wlr-randr grim \
+	patchelf shellcheck
 
 # Clone $(1) at commit $(3) into $(2) unless it already exists.
 define fetch
@@ -142,11 +154,10 @@ install-udev: ## udev rule so autoapp can open the phone in accessory mode (sudo
 install-labwc: ## labwc touch calibration and autostart (backs up existing files)
 	mkdir -p $(LABWC_DIR)
 	for f in rc.xml autostart; do \
-		if [ -f $(LABWC_DIR)/$$f ] && ! cmp -s $(LABWC_DIR)/$$f <(sed -e 's|@REPO@|$(REPO)|g' -e 's|@OPENAUTO_BIN@|$(OPENAUTO_BIN)|g' $(REPO)/deploy/labwc/$$f); then \
+		if [ -f $(LABWC_DIR)/$$f ] && ! cmp -s $(LABWC_DIR)/$$f <($(RENDER) $(REPO)/deploy/labwc/$$f); then \
 			cp $(LABWC_DIR)/$$f $(LABWC_DIR)/$$f.bak; echo ">> backed up $(LABWC_DIR)/$$f"; \
 		fi; \
-		sed -e 's|@REPO@|$(REPO)|g' -e 's|@OPENAUTO_BIN@|$(OPENAUTO_BIN)|g' \
-			$(REPO)/deploy/labwc/$$f > $(LABWC_DIR)/$$f; \
+		$(RENDER) $(REPO)/deploy/labwc/$$f > $(LABWC_DIR)/$$f; \
 	done
 	@echo ">> labwc config takes effect at the next login (or: kill -HUP the labwc process)"
 
@@ -156,21 +167,26 @@ install-openauto-config: ## OpenAuto settings (kept if one already exists)
 	cp -n $(REPO)/deploy/openauto/openauto.ini $(OPENAUTO_BIN)/openauto.ini
 
 .PHONY: install-scripts
-install-scripts: ## Install aa-restart.sh to ~/.local/bin
+install-scripts: ## Install aa-restart.sh and pi-carplay-autoapp to ~/.local/bin
 	mkdir -p $(BIN_DIR)
-	sed -e 's|@REPO@|$(REPO)|g' -e 's|@OPENAUTO_BIN@|$(OPENAUTO_BIN)|g' \
-		$(REPO)/deploy/bin/aa-restart.sh > $(BIN_DIR)/aa-restart.sh
-	chmod 0755 $(BIN_DIR)/aa-restart.sh
+	for f in aa-restart.sh pi-carplay-autoapp; do \
+		$(RENDER) $(REPO)/deploy/bin/$$f > $(BIN_DIR)/$$f; \
+		chmod 0755 $(BIN_DIR)/$$f; \
+	done
 
 .PHONY: boot-config
 boot-config: ## Add the SPI display overlay to config.txt (sudo, needs a reboot)
-	@if grep -q '^dtoverlay=piscreen' $(BOOT_CFG); then \
-		echo ">> $(BOOT_CFG) already has: $$(grep '^dtoverlay=piscreen' $(BOOT_CFG))"; \
-	else \
-		sudo cp $(BOOT_CFG) $(BOOT_CFG).bak; \
-		printf '\n[all]\n# 3.5" SPI hat (ILI9486 + ADS7846), DRM driver. 32 MHz is the panel maximum.\n%s\n' '$(OVERLAY_LINE)' | sudo tee -a $(BOOT_CFG) >/dev/null; \
-		echo ">> added overlay to $(BOOT_CFG) (backup at $(BOOT_CFG).bak). Reboot to apply."; \
-	fi
+	BOOT_CFG=$(BOOT_CFG) $(REPO)/deploy/bin/pi-carplay-boot-config
+
+# ---------------------------------------------------------------- release
+
+.PHONY: package
+package: ## Build dist/pi-carplay_<VERSION>_arm64.deb and the GPL source tarball
+	$(REPO)/packaging/build-deb.sh $(VERSION) $(SRC_DIR) $(DIST_DIR)
+
+.PHONY: lint
+lint: ## shellcheck the scripts
+	shellcheck $(addprefix $(REPO)/,$(SHELL_SCRIPTS))
 
 # ---------------------------------------------------------------- run
 
@@ -188,8 +204,8 @@ status: ## Show what is running and the health of the Pi
 # ---------------------------------------------------------------- clean
 
 .PHONY: clean
-clean: ## Remove the shell build directory
-	rm -rf $(HEADUNIT_DIR)/build
+clean: ## Remove the shell build directory and dist/
+	rm -rf $(HEADUNIT_DIR)/build $(DIST_DIR)
 
 .PHONY: clean-all
 clean-all: clean ## Also remove the OpenAuto, aasdk and h264bitstream build directories

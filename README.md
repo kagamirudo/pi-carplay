@@ -1,5 +1,9 @@
 # pi-carplay
 
+[![CI](https://github.com/kagamirudo/pi-carplay/actions/workflows/ci.yml/badge.svg)](https://github.com/kagamirudo/pi-carplay/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kagamirudo/pi-carplay?sort=semver)](https://github.com/kagamirudo/pi-carplay/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT%20%2B%20GPL--3.0%20patches-blue)](LICENSE)
+
 **A DIY car head unit on a Raspberry Pi 5.** Wired Android Auto on a 3.5″ touchscreen, a touch-friendly Qt 6 shell, and Bluetooth audio to your car stereo. The goal is a mirror-mounted unit with a forward dash cam.
 
 <p align="center">
@@ -40,7 +44,21 @@ Details, pinout and driver notes are in [`raspi-headunit/docs/hardware.md`](rasp
 
 ## Quick start
 
-On a fresh Raspberry Pi OS (Bookworm, desktop) install, logged in as the desktop user:
+### Option A: install the release package
+
+On Raspberry Pi OS Bookworm (64-bit, desktop), as the desktop user:
+
+```sh
+VERSION=0.1.0
+wget https://github.com/kagamirudo/pi-carplay/releases/download/v$VERSION/pi-carplay_${VERSION}_arm64.deb
+sudo apt install ./pi-carplay_${VERSION}_arm64.deb
+pi-carplay-setup --boot     # labwc touch and autostart for this user, display overlay
+sudo reboot
+```
+
+The package installs to `/opt/pi-carplay` and adds `pi-carplay-setup`, `pi-carplay-restart` and `pi-carplay-boot-config`. All files are on the [releases page](https://github.com/kagamirudo/pi-carplay/releases), with a `SHA256SUMS` file and the GPL source tarball.
+
+### Option B: build from source
 
 ```sh
 git clone https://github.com/kagamirudo/pi-carplay.git ~/CarPlay
@@ -65,7 +83,7 @@ After the reboot the panel shows the shell. Plug in the phone and Android Auto t
 | Get back to the shell | In Android Auto, open the app grid (⋮⋮) and tap **Exit**. |
 | Return to Android Auto | Shell **Home** → **Android Auto** |
 | Connect the car stereo | Shell **BT** → **Scan** → put the car in pairing mode → **Connect** |
-| Recover from a frozen or black screen | `make restart` (or `~/.local/bin/aa-restart.sh`) |
+| Recover from a frozen or black screen | `pi-carplay-restart` (package) or `make restart` (source) |
 | Check health | `make status` |
 
 More detail is in [docs/usage.md](docs/usage.md).
@@ -89,11 +107,14 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 
 | Path | What |
 | --- | --- |
-| `Makefile` | One-command dependencies, build, install and boot config |
+| `Makefile` | One-command dependencies, build, test, install, boot config and packaging |
+| `packaging/` | `.deb` builder, package scripts and Debian copyright file |
+| `.github/workflows/` | CI (lint, build, test, package on arm64) and tag-triggered releases |
 | `raspi-headunit/` | The head-unit shell: C++20, Qt 6.4, QML, CMake, unit tests |
 | `patches/` | **GPL-3.0** patches for OpenAuto and aasdk, pinned to upstream commits |
 | `deploy/` | Files `make install` puts on the system: udev rule, labwc config, autostart, OpenAuto config, restart script |
-| `docs/` | Installation, usage, architecture, troubleshooting |
+| `docs/` | Installation, usage, architecture, troubleshooting, releasing |
+| `CHANGELOG.md` | Release history |
 | `scripts/` | Bring-up tools, such as a raw touch and panel test canvas |
 | `plan_01.md` | Original project plan and design notes |
 

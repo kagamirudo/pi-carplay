@@ -1,0 +1,24 @@
+#!/bin/sh
+# Add the 3.5" SPI display overlay to the Raspberry Pi boot config.
+# Leaves an existing piscreen line alone. Needs a reboot to take effect.
+set -eu
+
+BOOT_CFG="${BOOT_CFG:-/boot/firmware/config.txt}"
+OVERLAY="dtoverlay=piscreen,drm,speed=32000000,rotate=180,invx,invy"
+
+if [ ! -f "$BOOT_CFG" ]; then
+  echo "error: $BOOT_CFG not found (is this a Raspberry Pi?)" >&2
+  exit 1
+fi
+
+if grep -q '^dtoverlay=piscreen' "$BOOT_CFG"; then
+  echo "$BOOT_CFG already has: $(grep '^dtoverlay=piscreen' "$BOOT_CFG")"
+  exit 0
+fi
+
+SUDO=""
+[ "$(id -u)" -eq 0 ] || SUDO=sudo
+$SUDO cp "$BOOT_CFG" "$BOOT_CFG.bak"
+printf '\n[all]\n# 3.5" SPI hat (ILI9486 + ADS7846), DRM driver. 32 MHz is the panel maximum.\n%s\n' "$OVERLAY" \
+  | $SUDO tee -a "$BOOT_CFG" >/dev/null
+echo "Added the display overlay to $BOOT_CFG (backup: $BOOT_CFG.bak). Reboot to apply."

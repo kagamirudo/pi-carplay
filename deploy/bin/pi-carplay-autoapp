@@ -13,5 +13,6 @@ export OPENAUTO_NO_MAIN_WINDOW="${OPENAUTO_NO_MAIN_WINDOW:-1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 # Keep a core dump if autoapp crashes (coredumpctl gdb autoapp).
+# shellcheck disable=SC3045  # dash supports ulimit -c; the POSIX warning is moot
 ulimit -c unlimited 2>/dev/null || true
 exec "@AUTOAPP@" "$@"

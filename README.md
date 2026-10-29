@@ -127,10 +127,10 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 | `patches/` | **GPL-3.0** patches for OpenAuto and aasdk, pinned to upstream commits |
 | `deploy/` | Files `make install` puts on the system: udev rule, labwc config, autostart, OpenAuto config, restart script |
 | `docs/` | Installation, usage, architecture, troubleshooting, quality policy, testing, releasing |
+| `docs/plans/` | Numbered design plans, starting with the [original project plan](docs/plans/0001-pi5-head-unit-and-dash-cam.md) |
 | `CONTRIBUTING.md` | How changes get in |
 | `CHANGELOG.md` | Release history |
 | `scripts/` | Bring-up tools, such as a raw touch and panel test canvas |
-| `plan_01.md` | Original project plan and design notes |
 
 ## Licensing
 

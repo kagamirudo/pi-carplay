@@ -14,6 +14,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- `plan_01.md` moved to [`docs/plans/0001-pi5-head-unit-and-dash-cam.md`](docs/plans/0001-pi5-head-unit-and-dash-cam.md), with a status header and a [plans index](docs/plans/README.md) for future design plans.
 - Logs moved from `/tmp` to `~/.local/state/pi-carplay/`, so they survive a reboot.
 - The Android accessory udev rule grants access to the logged-in user and `plugdev` (`0660`, `uaccess`) instead of every user (`0666`).
 

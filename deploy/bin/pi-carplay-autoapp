@@ -12,4 +12,6 @@ cd "$CONF_DIR"
 export OPENAUTO_NO_MAIN_WINDOW="${OPENAUTO_NO_MAIN_WINDOW:-1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+# Keep a core dump if autoapp crashes (coredumpctl gdb autoapp).
+ulimit -c unlimited 2>/dev/null || true
 exec "@AUTOAPP@" "$@"

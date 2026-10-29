@@ -43,7 +43,7 @@ Details, pinout and driver notes are in [`raspi-headunit/docs/hardware.md`](rasp
 On a fresh Raspberry Pi OS (Bookworm, desktop) install, logged in as the desktop user:
 
 ```sh
-git clone https://github.com/<you>/pi-carplay.git ~/CarPlay
+git clone https://github.com/kagamirudo/pi-carplay.git ~/CarPlay
 cd ~/CarPlay
 make deps          # apt packages (sudo)
 make build         # h264bitstream, aasdk, OpenAuto (patched) and the shell

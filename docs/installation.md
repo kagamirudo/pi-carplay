@@ -12,7 +12,7 @@ This walks through a fresh install with the `Makefile`. Every step can be re-run
 ## 2. Get the code
 
 ```sh
-git clone https://github.com/<you>/pi-carplay.git ~/CarPlay
+git clone https://github.com/kagamirudo/pi-carplay.git ~/CarPlay
 cd ~/CarPlay
 ```
 

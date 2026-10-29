@@ -1,0 +1,25 @@
+{
+  "display": {
+    "width": 480,
+    "height": 320,
+    "output": "SPI-1",
+    "fullscreen": true
+  },
+  "dashcam": {
+    "enabled": false,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "segmentSeconds": 120,
+    "storageLimitBytes": 0,
+    "reserveBytes": 536870912,
+    "clipsDirectory": ""
+  },
+  "logging": {
+    "level": "info",
+    "path": ""
+  },
+  "bluetooth": {
+    "carDevice": ""
+  }
+}

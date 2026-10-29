@@ -1,0 +1,740 @@
+diff --git a/autoapp/autoapp.cpp b/autoapp/autoapp.cpp
+index 3cae84e..491be03 100644
+--- a/autoapp/autoapp.cpp
++++ b/autoapp/autoapp.cpp
+@@ -16,8 +16,11 @@
+ *  along with openauto. If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
++#include <cstdlib>
++#include <string>
+ #include <thread>
+ #include <QApplication>
++#include "openauto/Projection/QtVideoOutput.hpp"
+ #include "aasdk/USB/USBHub.hpp"
+ #include "aasdk/USB/ConnectedAccessoriesEnumerator.hpp"
+ #include "aasdk/USB/AccessoryModeQueryChain.hpp"
+@@ -107,7 +110,14 @@ int main(int argc, char* argv[])
+         qApplication.setOverrideCursor(cursor);
+     });
+ 
+-    mainWindow.showFullScreen();
++    openauto::projection::QtVideoOutput::installSignalHandlers();
++
++    // Under a separate head-unit shell, only the projection window should appear.
++    const char* noMainWindow = std::getenv("OPENAUTO_NO_MAIN_WINDOW");
++    if(noMainWindow == nullptr || std::string(noMainWindow) != "1")
++    {
++        mainWindow.showFullScreen();
++    }
+ 
+     aasdk::usb::USBWrapper usbWrapper(usbContext);
+     aasdk::usb::AccessoryModeQueryFactory queryFactory(usbWrapper, ioService);
+diff --git a/include/openauto/Projection/IVideoOutput.hpp b/include/openauto/Projection/IVideoOutput.hpp
+index 58d44ea..9f13d6c 100644
+--- a/include/openauto/Projection/IVideoOutput.hpp
++++ b/include/openauto/Projection/IVideoOutput.hpp
+@@ -18,6 +18,7 @@
+ 
+ #pragma once
+ 
++#include <functional>
+ #include <memory>
+ #include <QRect>
+ #include "aasdk_proto/VideoFPSEnum.pb.h"
+@@ -45,6 +46,10 @@ public:
+     virtual aasdk::proto::enums::VideoResolution::Enum getVideoResolution() const = 0;
+     virtual size_t getScreenDPI() const = 0;
+     virtual QRect getVideoMargins() const = 0;
++    // Phone handed the screen back to the head unit (focused == false) or took it again.
++    virtual void setFocused(bool) {}
++    // Called when the head unit asks to show projection again.
++    virtual void setResumeHandler(std::function<void()>) {}
+ };
+ 
+ }
+diff --git a/include/openauto/Projection/InputDevice.hpp b/include/openauto/Projection/InputDevice.hpp
+index 9f6f691..965d174 100644
+--- a/include/openauto/Projection/InputDevice.hpp
++++ b/include/openauto/Projection/InputDevice.hpp
+@@ -20,6 +20,7 @@
+ 
+ #include <QObject>
+ #include <QKeyEvent>
++#include <QPoint>
+ #include "IInputDevice.hpp"
+ #include "openauto/Configuration/IConfiguration.hpp"
+ #include <bits/stdc++.h>
+@@ -48,8 +49,9 @@ private:
+     void setVideoGeometry();
+     bool handleKeyEvent(QEvent* event, QKeyEvent* key);
+     void dispatchKeyEvent(ButtonEvent event);
+-    bool handleTouchEvent(QEvent* event);
+-    bool handleMouseEvent(QEvent* event);
++    bool handleTouchEvent(QObject* target, QEvent* event);
++    bool handleMouseEvent(QObject* target, QEvent* event);
++    QPoint mapToVideo(QObject* target, const QPoint& local) const;
+ 
+     QObject& parent_;
+     configuration::IConfiguration::Pointer configuration_;
+@@ -61,6 +63,11 @@ private:
+     std::priority_queue <int, std::vector<int>, std::greater<int> > pointer_id_queue;
+     QMap<int, int> pointer_map;
+     int max_pointers = 0;
++    bool sawTouch_ = false;
++    bool pointerDown_ = false;
++    bool dragging_ = false;
++    QPoint pressLocal_;
++    QPoint pressVideo_;
+ };
+ 
+ }
+diff --git a/include/openauto/Projection/QtVideoOutput.hpp b/include/openauto/Projection/QtVideoOutput.hpp
+index 7e0d5ed..481b62b 100644
+--- a/include/openauto/Projection/QtVideoOutput.hpp
++++ b/include/openauto/Projection/QtVideoOutput.hpp
+@@ -18,8 +18,13 @@
+ 
+ #pragma once
+ 
++#include <QGraphicsScene>
++#include <QGraphicsVideoItem>
++#include <QGraphicsView>
+ #include <QMediaPlayer>
+-#include <QVideoWidget>
++#include <QTimer>
++#include <functional>
++#include <mutex>
+ #include <boost/noncopyable.hpp>
+ #include "VideoOutput.hpp"
+ #include "SequentialBuffer.hpp"
+@@ -39,8 +44,13 @@ public:
+     bool init() override;
+     void write(uint64_t timestamp, const aasdk::common::DataConstBuffer& buffer) override;
+     void stop() override;
++    void setFocused(bool focused) override;
++    void setResumeHandler(std::function<void()> handler) override;
+     void resize();
+ 
++    // SIGUSR1 asks to show projection again after the phone's "Exit".
++    static void installSignalHandlers();
++
+ signals:
+     void startPlayback();
+     void stopPlayback();
+@@ -51,10 +61,21 @@ protected slots:
+     void onStopPlayback();
+ 
+ private:
++    QSize videoFrameSize() const;
++    void showNativeCrop();
++    void showVideo();
++    void hideVideo();
++    void pollResumeSignal();
++
+     SequentialBuffer videoBuffer_;
+-    std::unique_ptr<QVideoWidget> videoWidget_;
++    std::unique_ptr<QGraphicsView> videoView_;
++    QGraphicsScene* videoScene_;
++    QGraphicsVideoItem* videoItem_;
+     std::unique_ptr<QMediaPlayer> mediaPlayer_;
+     QWidget* videoContainer_;
++    QTimer* resumePoll_ = nullptr;
++    std::mutex resumeMutex_;
++    std::function<void()> resumeHandler_;
+ };
+ 
+ }
+diff --git a/include/openauto/Service/VideoService.hpp b/include/openauto/Service/VideoService.hpp
+index 0b70b04..f90b9a1 100644
+--- a/include/openauto/Service/VideoService.hpp
++++ b/include/openauto/Service/VideoService.hpp
+@@ -19,6 +19,7 @@
+ #pragma once
+ 
+ #include <memory>
++#include "aasdk_proto/VideoFocusModeEnum.pb.h"
+ #include "aasdk/Channel/AV/VideoServiceChannel.hpp"
+ #include "aasdk/Channel/AV/IVideoServiceChannelEventHandler.hpp"
+ #include "openauto/Projection/IVideoOutput.hpp"
+@@ -51,6 +52,7 @@ public:
+ private:
+     using std::enable_shared_from_this<VideoService>::shared_from_this;
+     void sendVideoFocusIndication();
++    void sendVideoFocusIndication(aasdk::proto::enums::VideoFocusMode::Enum mode, bool unrequested);
+ 
+     boost::asio::io_service::strand strand_;
+     aasdk::channel::av::VideoServiceChannel::Pointer channel_;
+diff --git a/openauto/Projection/InputDevice.cpp b/openauto/Projection/InputDevice.cpp
+index 411e6c5..cd56e67 100644
+--- a/openauto/Projection/InputDevice.cpp
++++ b/openauto/Projection/InputDevice.cpp
+@@ -20,6 +20,10 @@
+ #include "openauto/Projection/IInputDeviceEventHandler.hpp"
+ #include "openauto/Projection/InputDevice.hpp"
+ #include <QDebug>
++#include <QGuiApplication>
++#include <QScreen>
++#include <QWidget>
++#include <algorithm>
+ 
+ namespace openauto
+ {
+@@ -41,7 +45,17 @@ void InputDevice::start(IInputDeviceEventHandler& eventHandler)
+ {
+     std::lock_guard<decltype(mutex_)> lock(mutex_);
+ 
+-    OPENAUTO_LOG(info) << "[InputDevice] start.";
++    if(QScreen* screen = QGuiApplication::primaryScreen())
++    {
++        if(screen->geometry().width() > 1 && screen->geometry().height() > 1)
++        {
++            touchscreenGeometry_ = screen->geometry();
++        }
++    }
++
++    OPENAUTO_LOG(info) << "[InputDevice] start. touch "
++                       << touchscreenGeometry_.width() << "x" << touchscreenGeometry_.height()
++                       << " video " << displayGeometry_.width() << "x" << displayGeometry_.height();
+     eventHandler_ = &eventHandler;
+     parent_.installEventFilter(this);
+ }
+@@ -71,11 +85,11 @@ bool InputDevice::eventFilter(QObject* obj, QEvent* event)
+         }
+         else if(event->type() == QEvent::TouchBegin || event->type() == QEvent::TouchUpdate || event->type() == QEvent::TouchEnd || event->type() == QEvent::TouchCancel)
+         {
+-            return this->handleTouchEvent(event);
++            return this->handleTouchEvent(obj, event);
+         }
+         else if(event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::MouseMove)
+         {
+-            return this->handleMouseEvent(event);
++            return this->handleMouseEvent(obj, event);
+         }
+     }
+ 
+@@ -181,7 +195,30 @@ bool InputDevice::handleKeyEvent(QEvent* event, QKeyEvent* key)
+ 
+     return true;
+ }
+-bool InputDevice::handleTouchEvent(QEvent* event)
++QPoint InputDevice::mapToVideo(QObject* target, const QPoint& local) const
++{
++    int areaW = std::max(1, touchscreenGeometry_.width());
++    int areaH = std::max(1, touchscreenGeometry_.height());
++
++    if(QWidget* widget = qobject_cast<QWidget*>(target))
++    {
++        if(widget->width() >= areaW / 2 && widget->height() >= areaH / 2)
++        {
++            areaW = std::max(1, widget->width());
++            areaH = std::max(1, widget->height());
++        }
++    }
++
++    // Touch is reported in the phone's content area (video minus margins),
++    // the same rectangle the panel shows scaled down.
++    const int touchW = std::max(1, displayGeometry_.width());
++    const int touchH = std::max(1, displayGeometry_.height());
++    const int x = std::min(touchW - 1, std::max(0, static_cast<int>((static_cast<float>(local.x()) / areaW) * touchW)));
++    const int y = std::min(touchH - 1, std::max(0, static_cast<int>((static_cast<float>(local.y()) / areaH) * touchH)));
++    return QPoint(x, y);
++}
++
++bool InputDevice::handleTouchEvent(QObject* target, QEvent* event)
+ {
+     if(!configuration_->getTouchscreenEnabled())
+     {
+@@ -216,6 +253,7 @@ bool InputDevice::handleTouchEvent(QEvent* event)
+             return true;
+     }
+ 
++    sawTouch_ = true;
+     touchEvent->set_touch_action(type);
+ 
+     auto pointers = qtTouchEvent->touchPoints();
+@@ -245,9 +283,10 @@ bool InputDevice::handleTouchEvent(QEvent* event)
+             pointer_id_queue.push(pointer_map.take(pointers[i].id()));
+         }
+         
++        const QPoint videoPoint = this->mapToVideo(target, pointers[i].pos().toPoint());
+         auto touchLocation = touchEvent->add_touch_location();
+-        touchLocation->set_x((static_cast<float>(pointers[i].pos().x()) / touchscreenGeometry_.width()) * displayGeometry_.width());
+-        touchLocation->set_y((static_cast<float>(pointers[i].pos().y()) / touchscreenGeometry_.height()) * displayGeometry_.height());
++        touchLocation->set_x(videoPoint.x());
++        touchLocation->set_y(videoPoint.y());
+         touchLocation->set_pointer_id(pointer_map[pointers[i].id()]);
+     }
+ 
+@@ -256,36 +295,63 @@ bool InputDevice::handleTouchEvent(QEvent* event)
+     return true;
+ 
+ }
+-bool InputDevice::handleMouseEvent(QEvent* event)
++bool InputDevice::handleMouseEvent(QObject* target, QEvent* event)
+ {
+-    if(!configuration_->getTouchscreenEnabled())
++    if(!configuration_->getTouchscreenEnabled() || sawTouch_)
+     {
+         return true;
+     }
+ 
+-    aasdk::proto::enums::TouchAction::Enum type;
++    QMouseEvent* mouse = static_cast<QMouseEvent*>(event);
++    const bool leftHeld = mouse->buttons().testFlag(Qt::LeftButton);
++    if(event->type() != QEvent::MouseButtonRelease && !leftHeld)
++    {
++        return true;
++    }
+ 
+-    switch(event->type())
++    // The resistive panel jitters a few millimetres. Sending that as a drag
++    // makes Android Auto pan instead of accepting the tap.
++    const int tapSlopPx = 14;
++    const QPoint videoPoint = this->mapToVideo(target, mouse->pos());
++
++    if(event->type() == QEvent::MouseButtonPress)
+     {
+-    case QEvent::MouseButtonPress:
+-        type = aasdk::proto::enums::TouchAction::PRESS;
+-        break;
+-    case QEvent::MouseButtonRelease:
+-        type = aasdk::proto::enums::TouchAction::RELEASE;
+-        break;
+-    case QEvent::MouseMove:
+-        type = aasdk::proto::enums::TouchAction::DRAG;
+-        break;
+-    default:
++        pointerDown_ = true;
++        dragging_ = false;
++        pressLocal_ = mouse->pos();
++        pressVideo_ = videoPoint;
++        eventHandler_->onMouseEvent({aasdk::proto::enums::TouchAction::PRESS, static_cast<uint32_t>(pressVideo_.x()), static_cast<uint32_t>(pressVideo_.y()), 0});
+         return true;
+-    };
++    }
+ 
+-    QMouseEvent* mouse = static_cast<QMouseEvent*>(event);
+-    if(event->type() == QEvent::MouseButtonRelease || mouse->buttons().testFlag(Qt::LeftButton))
++    if(event->type() == QEvent::MouseMove)
++    {
++        if(!pointerDown_)
++        {
++            return true;
++        }
++
++        if(!dragging_)
++        {
++            const int dx = mouse->pos().x() - pressLocal_.x();
++            const int dy = mouse->pos().y() - pressLocal_.y();
++            if((dx * dx) + (dy * dy) < tapSlopPx * tapSlopPx)
++            {
++                return true;
++            }
++            dragging_ = true;
++        }
++
++        eventHandler_->onMouseEvent({aasdk::proto::enums::TouchAction::DRAG, static_cast<uint32_t>(videoPoint.x()), static_cast<uint32_t>(videoPoint.y()), 0});
++        return true;
++    }
++
++    if(pointerDown_)
+     {
+-        const uint32_t x = (static_cast<float>(mouse->pos().x()) / touchscreenGeometry_.width()) * displayGeometry_.width();
+-        const uint32_t y = (static_cast<float>(mouse->pos().y()) / touchscreenGeometry_.height()) * displayGeometry_.height();
+-        eventHandler_->onMouseEvent({type, x, y, 0});
++        const QPoint up = dragging_ ? videoPoint : pressVideo_;
++        eventHandler_->onMouseEvent({aasdk::proto::enums::TouchAction::RELEASE, static_cast<uint32_t>(up.x()), static_cast<uint32_t>(up.y()), 0});
++        pointerDown_ = false;
++        dragging_ = false;
+     }
+ 
+     return true;
+@@ -298,7 +364,7 @@ bool InputDevice::hasTouchscreen() const
+ 
+ QRect InputDevice::getTouchscreenGeometry() const
+ {
+-    return touchscreenGeometry_;
++    return displayGeometry_;
+ }
+ 
+ void InputDevice::setTouchscreenGeometry(QRect& touchscreenGeometry)
+diff --git a/openauto/Projection/QtVideoOutput.cpp b/openauto/Projection/QtVideoOutput.cpp
+index 6c42393..d7f5b29 100644
+--- a/openauto/Projection/QtVideoOutput.cpp
++++ b/openauto/Projection/QtVideoOutput.cpp
+@@ -16,7 +16,17 @@
+ *  along with openauto. If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
++#include <algorithm>
++#include <array>
++#include <atomic>
++#include <cmath>
++#include <csignal>
++#include <cstdlib>
+ #include <QApplication>
++#include <QGraphicsEffect>
++#include <QPainter>
++#include <QGuiApplication>
++#include <QScreen>
+ #include "openauto/Projection/QtVideoOutput.hpp"
+ #include "OpenautoLog.hpp"
+ 
+@@ -25,6 +35,95 @@ namespace openauto
+ namespace projection
+ {
+ 
++namespace
++{
++
++std::atomic<bool> resumeRequested{false};
++
++void onResumeSignal(int)
++{
++    resumeRequested = true;
++}
++
++double envOr(const char* name, double fallback)
++{
++    const char* value = std::getenv(name);
++    if(value == nullptr || *value == '\0')
++    {
++        return fallback;
++    }
++    char* end = nullptr;
++    const double parsed = std::strtod(value, &end);
++    return end == value ? fallback : parsed;
++}
++
++// Optional colour correction for the panel. Neutral by default: on the SPI
++// TN panel, darkened mid-tones shifted orange to red and greys to blue.
++class PanelColorEffect : public QGraphicsEffect
++{
++public:
++    static bool wanted()
++    {
++        return envOr("OPENAUTO_PANEL_GAMMA", 1.0) != 1.0 || envOr("OPENAUTO_PANEL_CONTRAST", 1.0) != 1.0
++            || envOr("OPENAUTO_PANEL_SATURATION", 1.0) != 1.0;
++    }
++
++    explicit PanelColorEffect(QObject* parent = nullptr)
++        : QGraphicsEffect(parent)
++        , saturation_(envOr("OPENAUTO_PANEL_SATURATION", 1.0))
++    {
++        const double gamma = envOr("OPENAUTO_PANEL_GAMMA", 1.0);
++        const double contrast = envOr("OPENAUTO_PANEL_CONTRAST", 1.0);
++        for(int i = 0; i < 256; ++i)
++        {
++            double v = std::pow(i / 255.0, gamma);
++            v = (v - 0.5) * contrast + 0.5;
++            lut_[i] = static_cast<int>(std::lround(qBound(0.0, v, 1.0) * 255.0));
++        }
++        OPENAUTO_LOG(info) << "[QtVideoOutput] panel color gamma " << gamma
++                           << " contrast " << contrast << " saturation " << saturation_;
++    }
++
++protected:
++    void draw(QPainter* painter) override
++    {
++        QPoint offset;
++        const QPixmap source = sourcePixmap(Qt::DeviceCoordinates, &offset, QGraphicsEffect::NoPad);
++        if(source.isNull())
++        {
++            return;
++        }
++
++        QImage image = source.toImage().convertToFormat(QImage::Format_RGB32);
++        const int sat = static_cast<int>(std::lround(saturation_ * 256.0));
++        for(int y = 0; y < image.height(); ++y)
++        {
++            QRgb* line = reinterpret_cast<QRgb*>(image.scanLine(y));
++            for(int x = 0; x < image.width(); ++x)
++            {
++                const int r = lut_[qRed(line[x])];
++                const int g = lut_[qGreen(line[x])];
++                const int b = lut_[qBlue(line[x])];
++                const int luma = (r * 77 + g * 150 + b * 29) >> 8;
++                line[x] = qRgb(qBound(0, luma + (((r - luma) * sat) >> 8), 255),
++                               qBound(0, luma + (((g - luma) * sat) >> 8), 255),
++                               qBound(0, luma + (((b - luma) * sat) >> 8), 255));
++            }
++        }
++
++        painter->save();
++        painter->setWorldTransform(QTransform());
++        painter->drawImage(offset, image);
++        painter->restore();
++    }
++
++private:
++    std::array<int, 256> lut_{};
++    double saturation_;
++};
++
++}
++
+ QtVideoOutput::QtVideoOutput(configuration::IConfiguration::Pointer configuration, QWidget* videoContainer)
+     : VideoOutput(std::move(configuration))
+     , videoContainer_(videoContainer)
+@@ -36,11 +135,113 @@ QtVideoOutput::QtVideoOutput(configuration::IConfiguration::Pointer configuratio
+     QMetaObject::invokeMethod(this, "createVideoOutput", Qt::BlockingQueuedConnection);
+ }
+ 
++QSize QtVideoOutput::videoFrameSize() const
++{
++    switch(this->getVideoResolution())
++    {
++    case aasdk::proto::enums::VideoResolution::_720p:
++        return QSize(1280, 720);
++    case aasdk::proto::enums::VideoResolution::_1080p:
++        return QSize(1920, 1080);
++    default:
++        return QSize(800, 480);
++    }
++}
++
+ void QtVideoOutput::createVideoOutput()
+ {
+     OPENAUTO_LOG(debug) << "[QtVideoOutput] create.";
+-    videoWidget_ = std::make_unique<QVideoWidget>(videoContainer_);
++    videoView_ = std::make_unique<QGraphicsView>(videoContainer_);
++    videoView_->setFrameStyle(QFrame::NoFrame);
++    videoView_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
++    videoView_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
++    videoView_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
++    videoView_->setRenderHint(QPainter::SmoothPixmapTransform, true);
++    videoView_->setOptimizationFlag(QGraphicsView::DontAdjustForAntialiasing, true);
++    videoView_->setBackgroundBrush(Qt::black);
++    videoScene_ = new QGraphicsScene(videoView_.get());
++    videoView_->setScene(videoScene_);
++    videoItem_ = new QGraphicsVideoItem();
++    if(PanelColorEffect::wanted())
++    {
++        videoItem_->setGraphicsEffect(new PanelColorEffect());
++    }
++    videoScene_->addItem(videoItem_);
+     mediaPlayer_ = std::make_unique<QMediaPlayer>(nullptr, QMediaPlayer::StreamPlayback);
++
++    resumeRequested = false;
++    resumePoll_ = new QTimer(this);
++    resumePoll_->setInterval(200);
++    connect(resumePoll_, &QTimer::timeout, this, &QtVideoOutput::pollResumeSignal);
++    resumePoll_->start();
++}
++
++void QtVideoOutput::installSignalHandlers()
++{
++    struct sigaction action{};
++    action.sa_handler = onResumeSignal;
++    sigemptyset(&action.sa_mask);
++    action.sa_flags = SA_RESTART;
++    sigaction(SIGUSR1, &action, nullptr);
++}
++
++void QtVideoOutput::setFocused(bool focused)
++{
++    QMetaObject::invokeMethod(this, [this, focused]() {
++        OPENAUTO_LOG(info) << "[QtVideoOutput] phone " << (focused ? "took" : "released") << " the screen.";
++        if(focused)
++        {
++            this->showVideo();
++        }
++        else
++        {
++            this->hideVideo();
++        }
++    }, Qt::QueuedConnection);
++}
++
++void QtVideoOutput::setResumeHandler(std::function<void()> handler)
++{
++    std::lock_guard<std::mutex> lock(resumeMutex_);
++    resumeHandler_ = std::move(handler);
++}
++
++void QtVideoOutput::pollResumeSignal()
++{
++    if(!resumeRequested.exchange(false))
++    {
++        return;
++    }
++    OPENAUTO_LOG(info) << "[QtVideoOutput] resume requested.";
++    this->showVideo();
++    std::function<void()> handler;
++    {
++        std::lock_guard<std::mutex> lock(resumeMutex_);
++        handler = resumeHandler_;
++    }
++    if(handler)
++    {
++        handler();
++    }
++}
++
++void QtVideoOutput::showVideo()
++{
++    if(videoContainer_ == nullptr)
++    {
++        // Wayland ignores raise/activate requests; re-mapping puts the window on top.
++        videoView_->hide();
++        videoView_->showFullScreen();
++    }
++    else
++    {
++        videoView_->show();
++    }
++}
++
++void QtVideoOutput::hideVideo()
++{
++    videoView_->hide();
+ }
+ 
+ 
+@@ -67,35 +268,74 @@ void QtVideoOutput::write(uint64_t, const aasdk::common::DataConstBuffer& buffer
+ 
+ void QtVideoOutput::resize()
+ {
+-    if(videoWidget_ != nullptr && videoContainer_ != nullptr)
++    if(videoView_ != nullptr && videoContainer_ != nullptr)
+     {
+-        videoWidget_->resize(videoContainer_->size());
++        videoView_->resize(videoContainer_->size());
+     }
+ }
+ 
++void QtVideoOutput::showNativeCrop()
++{
++    const QSize frame = this->videoFrameSize();
++    const QRect margins = configuration_->getVideoMargins();
++    const int contentW = frame.width() - margins.width();
++    const int contentH = frame.height() - margins.height();
++    const int cropX = std::max(0, margins.width() / 2);
++    const int cropY = std::max(0, margins.height() / 2);
++
++    videoItem_->setSize(QSizeF(frame));
++    videoItem_->setPos(0, 0);
++    videoScene_->setSceneRect(0, 0, frame.width(), frame.height());
++
++    if(contentW > 0 && contentH > 0 && (margins.width() > 0 || margins.height() > 0))
++    {
++        videoView_->setSceneRect(cropX, cropY, contentW, contentH);
++    }
++    else
++    {
++        videoView_->setSceneRect(0, 0, frame.width(), frame.height());
++    }
++
++    // Uniform downscale of the phone's content area onto the panel.
++    QSize panel(480, 320);
++    if(QScreen* screen = QGuiApplication::primaryScreen())
++    {
++        panel = screen->geometry().size();
++    }
++    const QRectF shown = videoView_->sceneRect();
++    const qreal scale = std::min(panel.width() / shown.width(), panel.height() / shown.height());
++    videoView_->setTransform(QTransform::fromScale(scale, scale));
++    OPENAUTO_LOG(info) << "[QtVideoOutput] scale " << scale << " content " << videoView_->sceneRect().x()
++                       << "," << videoView_->sceneRect().y()
++                       << " " << videoView_->sceneRect().width()
++                       << "x" << videoView_->sceneRect().height()
++                       << " from " << frame.width() << "x" << frame.height();
++}
++
+ void QtVideoOutput::onStartPlayback()
+ {
++    this->showNativeCrop();
++
+     if(videoContainer_ == nullptr)
+     {
+-        videoWidget_->setAspectRatioMode(Qt::IgnoreAspectRatio);
+-        videoWidget_->setFocus();
+-        videoWidget_->setWindowFlags(Qt::WindowStaysOnTopHint);
+-        videoWidget_->setFullScreen(true);
++        videoView_->setFocus();
++        videoView_->setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
++        videoView_->showFullScreen();
+     }
+     else
+     {
+-        videoWidget_->resize(videoContainer_->size());
++        videoView_->resize(videoContainer_->size());
++        videoView_->show();
+     }
+-    videoWidget_->show();
+ 
+-    mediaPlayer_->setVideoOutput(videoWidget_.get());
++    mediaPlayer_->setVideoOutput(videoItem_);
+     mediaPlayer_->setMedia(QMediaContent(), &videoBuffer_);
+     mediaPlayer_->play();
+ }
+ 
+ void QtVideoOutput::onStopPlayback()
+ {
+-    videoWidget_->hide();
++    videoView_->hide();
+     mediaPlayer_->stop();
+ }
+ 
+diff --git a/openauto/Service/VideoService.cpp b/openauto/Service/VideoService.cpp
+index b04da46..d0ae33c 100644
+--- a/openauto/Service/VideoService.cpp
++++ b/openauto/Service/VideoService.cpp
+@@ -37,6 +37,16 @@ void VideoService::start()
+ {
+     strand_.dispatch([this, self = this->shared_from_this()]() {
+         OPENAUTO_LOG(info) << "[VideoService] start.";
++        std::weak_ptr<VideoService> weak = this->shared_from_this();
++        videoOutput_->setResumeHandler([weak]() {
++            if(auto self = weak.lock())
++            {
++                self->strand_.dispatch([self]() {
++                    OPENAUTO_LOG(info) << "[VideoService] head unit requested projection.";
++                    self->sendVideoFocusIndication(aasdk::proto::enums::VideoFocusMode::FOCUSED, true);
++                });
++            }
++        });
+         channel_->receive(this->shared_from_this());
+     });
+ }
+@@ -77,7 +87,7 @@ void VideoService::onAVChannelSetupRequest(const aasdk::proto::messages::AVChann
+     response.add_configs(0);
+ 
+     auto promise = aasdk::channel::SendPromise::defer(strand_);
+-    promise->then(std::bind(&VideoService::sendVideoFocusIndication, this->shared_from_this()),
++    promise->then([self = this->shared_from_this()]() { self->sendVideoFocusIndication(); },
+                  std::bind(&VideoService::onChannelError, this->shared_from_this(), std::placeholders::_1));
+     channel_->sendAVChannelSetupResponse(response, std::move(promise));
+     channel_->receive(this->shared_from_this());
+@@ -160,17 +170,26 @@ void VideoService::onVideoFocusRequest(const aasdk::proto::messages::VideoFocusR
+                        << ", focus mode: " << request.focus_mode()
+                        << ", focus reason: " << request.focus_reason();
+ 
+-    this->sendVideoFocusIndication();
++    // UNFOCUSED is the phone's "Exit" tile: hand the screen back to the head unit.
++    const bool focused = request.focus_mode() != aasdk::proto::enums::VideoFocusMode::UNFOCUSED;
++    videoOutput_->setFocused(focused);
++    this->sendVideoFocusIndication(focused ? aasdk::proto::enums::VideoFocusMode::FOCUSED
++                                           : aasdk::proto::enums::VideoFocusMode::UNFOCUSED, false);
+     channel_->receive(this->shared_from_this());
+ }
+ 
+ void VideoService::sendVideoFocusIndication()
+ {
+-    OPENAUTO_LOG(info) << "[VideoService] video focus indication.";
++    this->sendVideoFocusIndication(aasdk::proto::enums::VideoFocusMode::FOCUSED, false);
++}
++
++void VideoService::sendVideoFocusIndication(aasdk::proto::enums::VideoFocusMode::Enum mode, bool unrequested)
++{
++    OPENAUTO_LOG(info) << "[VideoService] video focus indication, mode: " << mode;
+ 
+     aasdk::proto::messages::VideoFocusIndication videoFocusIndication;
+-    videoFocusIndication.set_focus_mode(aasdk::proto::enums::VideoFocusMode::FOCUSED);
+-    videoFocusIndication.set_unrequested(false);
++    videoFocusIndication.set_focus_mode(mode);
++    videoFocusIndication.set_unrequested(unrequested);
+ 
+     auto promise = aasdk::channel::SendPromise::defer(strand_);
+     promise->then([]() {}, std::bind(&VideoService::onChannelError, this->shared_from_this(), std::placeholders::_1));

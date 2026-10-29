@@ -1,0 +1,68 @@
+diff --git a/src/Transport/SSLWrapper.cpp b/src/Transport/SSLWrapper.cpp
+index 6aca9b4..f9aed6c 100644
+--- a/src/Transport/SSLWrapper.cpp
++++ b/src/Transport/SSLWrapper.cpp
+@@ -39,6 +39,7 @@ SSLWrapper::SSLWrapper()
+ 
+ SSLWrapper::~SSLWrapper()
+ {
++#if (OPENSSL_VERSION_NUMBER < 0x30000000L)
+     FIPS_mode_set(0);
+     ENGINE_cleanup();
+     CONF_modules_unload(1);
+@@ -48,6 +49,7 @@ SSLWrapper::~SSLWrapper()
+     ERR_remove_state(0);
+ #endif
+     ERR_free_strings();
++#endif
+ }
+ 
+ X509* SSLWrapper::readCertificate(const std::string& certificate)
+diff --git a/src/USB/USBHub.cpp b/src/USB/USBHub.cpp
+index e3b187d..bb0ebce 100644
+--- a/src/USB/USBHub.cpp
++++ b/src/USB/USBHub.cpp
+@@ -16,7 +16,9 @@
+ *  along with aasdk. If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
++#include <chrono>
+ #include <thread>
++#include <aasdk/Common/Log.hpp>
+ #include <aasdk/USB/IUSBWrapper.hpp>
+ #include <aasdk/USB/USBHub.hpp>
+ #include <aasdk/USB/AccessoryModeQueryChain.hpp>
+@@ -104,11 +106,32 @@ void USBHub::handleDevice(libusb_device* device)
+         return;
+     }
+ 
++    // udev applies accessory-node permissions after the arrival event.
++    // Retry only that device. Hubs stay root-only and must not block the strand.
+     DeviceHandle handle;
+-    auto openResult = usbWrapper_.open(device, handle);
++    int openResult = usbWrapper_.open(device, handle);
++
++    if(openResult != 0 && this->isAOAPDevice(deviceDescriptor))
++    {
++        for(int attempt = 1; attempt < 25 && hotplugPromise_ != nullptr; ++attempt)
++        {
++            std::this_thread::sleep_for(std::chrono::milliseconds(200));
++            openResult = usbWrapper_.open(device, handle);
++
++            if(openResult == 0)
++            {
++                break;
++            }
++        }
++    }
+ 
+     if(openResult != 0)
+     {
++        if(this->isAOAPDevice(deviceDescriptor))
++        {
++            AASDK_LOG(error) << "[USBHub] accessory open failed: " << openResult;
++        }
++
+         return;
+     }
+ 

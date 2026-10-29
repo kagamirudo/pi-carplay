@@ -1,0 +1,3 @@
+# Android Open Accessory (AOAP) modes. After the phone switches to accessory
+# mode it re-enumerates as 18d1:2d00..2d05; let the desktop user open it.
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", ATTR{idProduct}=="2d0[0-5]", MODE="0666", GROUP="plugdev"

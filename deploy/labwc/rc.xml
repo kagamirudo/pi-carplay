@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<openbox_config>
+  <touch deviceName="ADS7846 Touchscreen" mouseEmulation="yes" />
+  <libinput>
+    <device category="ADS7846 Touchscreen">
+      <calibrationMatrix>1 0 0 0 -1 1</calibrationMatrix>
+    </device>
+  </libinput>
+</openbox_config>

@@ -1,0 +1,26 @@
+# User unit for the fullscreen shell. Do not enable this yet.
+# The labwc desktop is still the session the Pi should boot into.
+#
+# Later, when the shell should cover that desktop at graphical login:
+#   mkdir -p ~/.config/systemd/user
+#   cp systemd/headunit.service ~/.config/systemd/user/headunit.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now headunit.service
+#
+# This file is not installed and not enabled by the Phase 1 build.
+
+[Unit]
+Description=Raspberry Pi head-unit shell
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=QT_QPA_PLATFORM=wayland
+Environment=QT_QUICK_CONTROLS_STYLE=Basic
+ExecStart=%h/CarPlay/raspi-headunit/build/headunit
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

@@ -7,11 +7,18 @@
 
 **A DIY car head unit on a Raspberry Pi 5.** Wired Android Auto on a 3.5″ touchscreen, a touch-friendly Qt 6 shell, and Bluetooth audio to your car stereo. The goal is a mirror-mounted unit with a forward dash cam.
 
-<p align="center">
-  <img src="docs/images/shell-home.png" alt="Head-unit home page" width="45%">
-  &nbsp;
-  <img src="docs/images/shell-bluetooth.png" alt="Bluetooth device list" width="45%">
-</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/images/shell-home.png" alt="Head-unit home page" width="360"><br><sub>Head-unit shell: home page</sub></td>
+    <td align="center"><img src="docs/images/shell-bluetooth.png" alt="Bluetooth device list" width="360"><br><sub>Head-unit shell: Bluetooth devices</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/aa-dashboard.png" alt="Android Auto dashboard with Maps, a media card and the app bar on the 480×320 panel" width="360"><br><sub>Android Auto on the panel: dashboard</sub></td>
+    <td align="center"><img src="docs/images/aa-maps.png" alt="Android Auto full-screen Google Maps with map controls on the 480×320 panel" width="360"><br><sub>Android Auto on the panel: full-screen Maps</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Real 480×320 captures from the SPI panel. Map tiles, places and media details in the Android Auto shots are pixelated for privacy.</sub></p>
 
 The phone plugs into the Pi over USB. Android Auto runs full-screen on the panel, and touch goes back to the phone. Sound goes to the car's existing stereo over Bluetooth, so the factory radio stays where it is.
 

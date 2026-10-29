@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Test suite:** Qt Test unit, D-Bus integration, UI and smoke tests, a seeded UI monkey test, config fuzzing, and bats tests for the scripts. `make check` runs every gate.
 - **Quality pipeline:** every pull request, push and release runs lint, static analysis, `-Werror` builds, all tests, ASan/UBSan, a coverage floor and a clean-system install test of the `.deb`. Nightly soak workflow.
 - Quality policy with the release procedure and hardware checklist, a testing guide, contributing guide, and pull request and bug report templates.
+- README screenshots of Android Auto on the 480×320 panel (dashboard and full-screen Maps), next to the head-unit shell, with map and personal details pixelated.
 
 ### Changed
 

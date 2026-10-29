@@ -44,7 +44,8 @@ R=$WORK/root
 REQUIRED="opt/pi-carplay/bin/headunit opt/pi-carplay/bin/autoapp opt/pi-carplay/share/openauto.ini
 opt/pi-carplay/share/labwc/autostart opt/pi-carplay/share/labwc/rc.xml lib/udev/rules.d/51-android-accessory.rules
 usr/bin/pi-carplay-setup usr/bin/pi-carplay-autoapp usr/bin/pi-carplay-restart usr/bin/pi-carplay-boot-config
-usr/bin/pi-carplay-supervise usr/bin/pi-carplay-selftest usr/share/doc/pi-carplay/copyright"
+usr/bin/pi-carplay-supervise usr/bin/pi-carplay-selftest usr/bin/pi-carplay-wireless-check
+usr/bin/pi-carplay-wireless-setup usr/share/doc/pi-carplay/copyright"
 missing=""
 for f in $REQUIRED; do [ -e "$R/$f" ] || missing="$missing $f"; done
 if [ -z "$missing" ]; then ok "required files"; else fail "missing:$missing"; fi
@@ -100,6 +101,9 @@ if [ "$INSTALL" -eq 1 ]; then
     && grep -q '/usr/bin/pi-carplay-supervise headunit /opt/pi-carplay/bin/headunit' ~/.config/labwc/autostart"
   check "supervisor runs for a desktop user" su tester -c "pi-carplay-supervise --status"
   check "selftest runs (results may fail off-Pi)" bash -c "pi-carplay-selftest --no-fail > /dev/null"
+  check "wireless check runs (results may fail off-Pi)" bash -c "pi-carplay-wireless-check --no-fail > /dev/null"
+  check "wireless setup previews for a desktop user" su tester -c "pi-carplay-wireless-setup --dry-run --no-firmware 2>&1 \
+    | grep -qE 'dry run: nothing was changed|no 5 GHz access point support'"
 
   check "apt purges the package" apt-get purge -y pi-carplay
   check "purge leaves nothing behind" bash -c "

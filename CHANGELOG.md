@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - **Crash recovery:** `pi-carplay-supervise` runs the shell and Android Auto, restarts either one if it exits (back-off from 1 s to 30 s), records each crash in `~/.local/state/pi-carplay/crashes.log`, and rotates the logs. Autostart and `pi-carplay-restart` use it.
 - **`pi-carplay-selftest`** (and `make selftest`): on-device check of power, temperature, display, touch, Bluetooth, audio, udev rule, autostart and recent crashes.
+- **Wireless Android Auto preparation** ([docs/wireless.md](docs/wireless.md)):
+  - which TP-Link Bluetooth adapters work (UB500 / UB500 Plus recommended, UB600 not supported by the Bookworm kernel)
+  - what the protocol needs, and the roadmap
+  - `pi-carplay-wireless-check` (`make wireless-check`): read-only check of Bluetooth controllers and firmware, 5 GHz access point support, regulatory country, NetworkManager and the projection ports
+  - `pi-carplay-wireless-setup` (`make wireless-setup`): installs `firmware-realtek`, records the phone's Bluetooth adapter and writes a 5 GHz hotspot profile with autoconnect off. It has `--dry-run`, is safe to run again, and never starts the hotspot.
+  - wireless projection itself is not available yet
 - **Test suite:** Qt Test unit, D-Bus integration, UI and smoke tests, a seeded UI monkey test, config fuzzing, and bats tests for the scripts. `make check` runs every gate.
 - **Quality pipeline:** every pull request, push and release runs lint, static analysis, `-Werror` builds, all tests, ASan/UBSan, a coverage floor and a clean-system install test of the `.deb`. Nightly soak workflow.
 - Quality policy with the release procedure and hardware checklist, a testing guide, contributing guide, and pull request and bug report templates.

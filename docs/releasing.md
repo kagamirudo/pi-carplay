@@ -69,6 +69,8 @@ The release attaches:
 | `/usr/bin/pi-carplay-restart` | Restarts both programs and resets the phone's USB port |
 | `/usr/bin/pi-carplay-boot-config` | Adds the SPI display overlay to `config.txt` |
 | `/usr/bin/pi-carplay-selftest` | On-device health check |
+| `/usr/bin/pi-carplay-wireless-check` | Readiness check for wireless Android Auto (read-only) |
+| `/usr/bin/pi-carplay-wireless-setup` | Firmware, phone adapter and 5 GHz hotspot profile for wireless Android Auto (never starts it) |
 | `/lib/udev/rules.d/51-android-accessory.rules` | Accessory-mode USB access for the desktop user |
 
 Runtime dependencies are worked out at build time from the libraries the shipped binaries link directly, plus the QML modules, Qt Wayland, Qt Multimedia plugins, BlueZ and `pactl`.

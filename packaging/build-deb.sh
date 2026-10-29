@@ -59,7 +59,8 @@ done
 render "$REPO/deploy/bin/pi-carplay-autoapp" > "$STAGE/usr/bin/pi-carplay-autoapp"
 render "$REPO/deploy/bin/aa-restart.sh" > "$STAGE/usr/bin/pi-carplay-restart"
 install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-carplay-supervise" \
-  "$REPO/tools/pi-carplay-selftest" "$STAGE/usr/bin/"
+  "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/tools/pi-carplay-selftest" \
+  "$REPO/tools/pi-carplay-wireless-check" "$STAGE/usr/bin/"
 install -m 0755 "$REPO/packaging/pi-carplay-setup" "$STAGE/usr/bin/"
 chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restart"
 

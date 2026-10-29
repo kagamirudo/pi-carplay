@@ -48,6 +48,7 @@ add_library(headunit_core STATIC
     src/camera/DashcamRecorder.cpp
     src/camera/StorageManager.cpp
     src/input/TouchInputManager.cpp
+    src/input/TouchCalibration.cpp
 )
 target_include_directories(headunit_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(headunit_core PUBLIC Threads::Threads headunit_flags)
@@ -64,6 +65,8 @@ add_library(headunit_shell STATIC
     src/bluetooth/DeviceList.hpp
     src/connection/WifiDevices.cpp
     src/connection/WifiDevices.hpp
+    src/input/TouchCalibrator.cpp
+    src/input/TouchCalibrator.hpp
 )
 target_link_libraries(headunit_shell PUBLIC Qt6::Core Qt6::DBus headunit_core)
 target_compile_definitions(headunit_shell PUBLIC HEADUNIT_VERSION="${PROJECT_VERSION}")
@@ -77,6 +80,7 @@ set(HEADUNIT_QML_FILES
     ui/BluetoothPage.qml
     ui/WifiPage.qml
     ui/ActionButton.qml
+    ui/Calibrate.qml
 )
 
 qt_add_executable(headunit src/main.cpp)

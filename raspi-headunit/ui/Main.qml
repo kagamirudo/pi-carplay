@@ -38,24 +38,24 @@ ApplicationWindow {
                     { label: "Setup", page: 4 }
                 ]
                 delegate: Button {
+                    id: tab
                     required property var modelData
                     text: modelData.label
                     width: (parent.width - 16) / 5
                     height: 34
-                    checkable: true
                     checked: stack.currentIndex === modelData.page
                     onClicked: stack.currentIndex = modelData.page
                     contentItem: Text {
-                        text: parent.text
-                        color: parent.checked ? "#1a1404" : "#f4f6f2"
+                        text: tab.text
+                        color: tab.checked ? "#1a1404" : "#f4f6f2"
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         font.pixelSize: 14
-                        font.bold: parent.checked
+                        font.bold: tab.checked
                     }
                     background: Rectangle {
                         radius: 4
-                        color: parent.checked ? "#e6b325" : (parent.down ? "#314231" : "#243024")
+                        color: tab.checked ? "#e6b325" : (tab.down ? "#314231" : "#243024")
                     }
                 }
             }

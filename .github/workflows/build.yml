@@ -54,21 +54,34 @@ jobs:
           echo "Building pi-carplay $v"
 
       - name: Install dependencies
-        run: make deps
+        run: make deps deps-qa
 
       - name: Build h264bitstream, aasdk, OpenAuto and the shell
         run: make build
 
+      - name: Static analysis
+        run: make analyze
+
       - name: Test
-        run: make test
+        run: make test CTEST_ARGS="--output-junit junit.xml"
 
       - name: Package
         run: make package VERSION="${{ steps.version.outputs.version }}"
+
+      - name: Check package
+        run: make test-package VERSION="${{ steps.version.outputs.version }}"
 
       - name: Inspect package
         run: |
           dpkg-deb --info dist/*.deb
           dpkg-deb --contents dist/*.deb
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-${{ steps.version.outputs.version }}
+          path: raspi-headunit/build/junit.xml
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v7
         with:

@@ -14,18 +14,6 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: shellcheck
-        run: make lint
-      - name: Makefile dry run
-        run: make -n build install package > /dev/null
-
-  build:
-    name: Build
-    uses: ./.github/workflows/build.yml
+  pipeline:
+    name: Gates
+    uses: ./.github/workflows/pipeline.yml

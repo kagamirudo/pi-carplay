@@ -1,0 +1,134 @@
+name: Pipeline
+
+# Every quality gate, shared by CI (pull requests, main) and Release (tags).
+# A release is only published when all of these pass for the tagged commit.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Package version. Defaults to the tag (vX.Y.Z) or VERSION~git<sha>.
+        type: string
+        required: false
+        default: ""
+    outputs:
+      version:
+        description: The package version that was built
+        value: ${{ jobs.build.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: shellcheck
+        run: make lint
+      - name: Makefile dry run
+        run: make -n build install package check > /dev/null
+
+  build:
+    name: Build and test
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ inputs.version }}
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:bookworm
+      # LeakSanitizer needs ptrace to stop the world at exit.
+      options: --cap-add=SYS_PTRACE
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Bootstrap container
+        run: apt-get update && apt-get install -y --no-install-recommends sudo git make ca-certificates
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: make deps deps-qa
+      - name: Shell tests under sanitizers
+        run: make test-asan
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Bootstrap container
+        run: apt-get update && apt-get install -y --no-install-recommends sudo git make ca-certificates
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: make deps deps-qa
+      - name: Coverage gate
+        run: make coverage 2>&1 | tee coverage.txt
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Coverage (raspi-headunit/src)'
+            echo '```'
+            grep -E '^(lines|functions|branches):' coverage.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            raspi-headunit/build-cov/coverage.html
+            raspi-headunit/build-cov/coverage.*.html
+            raspi-headunit/build-cov/coverage.xml
+          if-no-files-found: ignore
+
+  package-install:
+    name: Install test (clean Bookworm)
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Bootstrap container
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates git
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: pi-carplay-${{ needs.build.outputs.version }}-arm64
+          path: dist
+      - name: Install, run, purge and reinstall the package
+        run: packaging/test-deb.sh --install dist/pi-carplay_*_arm64.deb
+
+  passed:
+    name: CI passed
+    if: always()
+    needs: [lint, build, sanitizers, coverage, package-install]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every gate passed
+        run: |
+          results='${{ toJSON(needs.*.result) }}'
+          echo "$results"
+          if echo "$results" | grep -Eq '"(failure|cancelled|skipped)"'; then
+            echo "::error::A required gate did not pass"
+            exit 1
+          fi

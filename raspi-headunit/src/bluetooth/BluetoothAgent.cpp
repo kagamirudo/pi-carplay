@@ -12,7 +12,7 @@ QString BluetoothAgent::registerWithBluez() {
     if (!bus.isConnected()) {
         return QStringLiteral("No system D-Bus.");
     }
-    if (!bus.registerObject(QString::fromLatin1(kPath), this, QDBusConnection::ExportAllSlots)) {
+    if (!exportOn(bus)) {
         return QStringLiteral("Could not export the pairing agent.");
     }
     const QDBusObjectPath path(QString::fromLatin1(kPath));
@@ -31,6 +31,10 @@ QString BluetoothAgent::registerWithBluez() {
     return {};
 }
 
+bool BluetoothAgent::exportOn(QDBusConnection bus) {
+    return bus.isConnected() && bus.registerObject(QString::fromLatin1(kPath), this, QDBusConnection::ExportAllSlots);
+}
+
 void BluetoothAgent::setTarget(const QString& devicePath, const QString& pin) {
     targetPath_ = devicePath;
     pin_ = pin;
@@ -45,7 +49,9 @@ bool BluetoothAgent::isTarget(const QDBusObjectPath& device) {
     if (!targetPath_.isEmpty() && device.path() == targetPath_) {
         return true;
     }
-    sendErrorReply(QStringLiteral("org.bluez.Error.Rejected"), QStringLiteral("Not the device being paired"));
+    if (calledFromDBus()) {
+        sendErrorReply(QStringLiteral("org.bluez.Error.Rejected"), QStringLiteral("Not the device being paired"));
+    }
     return false;
 }
 

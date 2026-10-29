@@ -1,0 +1,166 @@
+#!/bin/bash
+# On-device check of a pi-carplay head unit. Run as the desktop user on the Pi.
+#
+#   pi-carplay-selftest            exit 1 if any check fails
+#   pi-carplay-selftest --no-fail  report only
+#
+# Each line is PASS, WARN (works, but look at it) or FAIL (fix before driving).
+set -u
+
+NO_FAIL=0
+[ "${1:-}" = --no-fail ] && NO_FAIL=1
+
+BOOT_CFG=${BOOT_CFG:-/boot/firmware/config.txt}
+STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/pi-carplay
+LABWC_AUTOSTART=${XDG_CONFIG_HOME:-$HOME/.config}/labwc/autostart
+fails=0
+warns=0
+
+pass() { printf 'PASS  %s\n' "$*"; }
+warn() { printf 'WARN  %s\n' "$*"; warns=$((warns + 1)); }
+fail() { printf 'FAIL  %s\n' "$*"; fails=$((fails + 1)); }
+
+# ---------------------------------------------------------------- platform
+
+model=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo unknown)
+case "$model" in
+  *"Raspberry Pi 5"*) pass "board: $model" ;;
+  *) warn "board: $model (built and tested on a Raspberry Pi 5)" ;;
+esac
+
+# shellcheck source=/dev/null
+. /etc/os-release 2>/dev/null
+if [ "${VERSION_CODENAME:-}" = bookworm ] && [ "$(dpkg --print-architecture 2>/dev/null)" = arm64 ]; then
+  pass "OS: ${PRETTY_NAME:-?} arm64"
+else
+  fail "OS: ${PRETTY_NAME:-unknown} $(dpkg --print-architecture 2>/dev/null) (needs Bookworm arm64)"
+fi
+
+if command -v vcgencmd > /dev/null; then
+  t=$(vcgencmd get_throttled 2>/dev/null | cut -d= -f2)
+  if [ -z "$t" ]; then
+    warn "power: vcgencmd get_throttled gave no answer"
+  elif (( t & 0x1 )); then
+    fail "power: under-voltage right now ($t). Use a 5 V 5 A supply; this causes resets and a white screen"
+  elif (( t & 0x50000 )); then
+    warn "power: under-voltage or throttling happened since boot ($t)"
+  else
+    pass "power: no under-voltage since boot"
+  fi
+  temp=$(vcgencmd measure_temp 2>/dev/null | sed -n "s/temp=\([0-9]*\).*/\1/p")
+  if [ -n "$temp" ] && [ "$temp" -ge 80 ]; then
+    fail "temperature: ${temp} C (throttles at 85 C; add cooling)"
+  elif [ -n "$temp" ] && [ "$temp" -ge 70 ]; then
+    warn "temperature: ${temp} C"
+  elif [ -n "$temp" ]; then
+    pass "temperature: ${temp} C"
+  fi
+else
+  warn "power: vcgencmd not available"
+fi
+
+free_mb=$(df -Pm / | awk 'NR == 2 {print $4}')
+if [ "${free_mb:-0}" -lt 512 ]; then
+  fail "disk: only ${free_mb} MiB free on /"
+elif [ "$free_mb" -lt 2048 ]; then
+  warn "disk: ${free_mb} MiB free on /"
+else
+  pass "disk: ${free_mb} MiB free on /"
+fi
+
+# ---------------------------------------------------------------- display and touch
+
+if grep -qE '^dtoverlay=piscreen.*speed=32000000' "$BOOT_CFG" 2>/dev/null; then
+  pass "display overlay: $(grep -E '^dtoverlay=piscreen' "$BOOT_CFG")"
+elif grep -qE '^dtoverlay=piscreen' "$BOOT_CFG" 2>/dev/null; then
+  warn "display overlay is not the tested one: $(grep -E '^dtoverlay=piscreen' "$BOOT_CFG")"
+else
+  fail "display overlay missing from $BOOT_CFG (run pi-carplay-boot-config, then reboot)"
+fi
+
+spi=""
+for c in /sys/class/drm/card*-SPI-*; do
+  [ -e "$c/status" ] && spi="$c"
+done
+if [ -n "$spi" ] && [ "$(cat "$spi/status")" = connected ]; then
+  pass "SPI panel: $(basename "$spi") connected"
+else
+  fail "SPI panel: no connected SPI DRM output (overlay not loaded or panel unplugged)"
+fi
+
+if grep -q ADS7846 /proc/bus/input/devices 2>/dev/null; then
+  pass "touch: ADS7846 controller present"
+else
+  fail "touch: no ADS7846 input device"
+fi
+
+# ---------------------------------------------------------------- software
+
+for bin in /opt/pi-carplay/bin/headunit /opt/pi-carplay/bin/autoapp; do
+  [ -x "$bin" ] || continue
+  if ldd "$bin" | grep -q 'not found'; then
+    fail "$bin: missing libraries: $(ldd "$bin" | awk '/not found/ {print $1}' | paste -sd' ')"
+  else
+    pass "$bin: all libraries resolve"
+  fi
+done
+
+if [ -f /etc/udev/rules.d/51-android-accessory.rules ] || [ -f /lib/udev/rules.d/51-android-accessory.rules ]; then
+  pass "udev: Android accessory rule installed"
+else
+  fail "udev: 51-android-accessory.rules missing (autoapp cannot open the phone)"
+fi
+
+if [ ! -f "$LABWC_AUTOSTART" ]; then
+  fail "autostart: $LABWC_AUTOSTART missing (run pi-carplay-setup)"
+elif grep -q 'pi-carplay-supervise headunit' "$LABWC_AUTOSTART"; then
+  pass "autostart: shell and Android Auto are supervised"
+else
+  warn "autostart: not supervised; crashes will not be restarted (run pi-carplay-setup or make install)"
+fi
+
+# ---------------------------------------------------------------- services
+
+if systemctl is-active --quiet bluetooth 2>/dev/null; then
+  if bluetoothctl show 2>/dev/null | grep -q 'Powered: yes'; then
+    pass "Bluetooth: service running, adapter powered"
+  else
+    warn "Bluetooth: service running, adapter not powered"
+  fi
+else
+  fail "Bluetooth: bluetooth.service is not running"
+fi
+
+if command -v pactl > /dev/null && pactl info > /dev/null 2>&1; then
+  pass "audio: $(pactl info | sed -n 's/^Server Name: //p')"
+else
+  warn "audio: no PulseAudio/PipeWire server for this user"
+fi
+
+# ---------------------------------------------------------------- running state
+
+if pgrep -u "$(id -u)" -x labwc > /dev/null; then
+  for p in headunit autoapp; do
+    if pgrep -u "$(id -u)" -x "$p" > /dev/null; then pass "running: $p"; else fail "running: $p is not running"; fi
+  done
+else
+  warn "running: no labwc session for $(id -un); skipped process checks"
+fi
+
+if [ -f "$STATE_DIR/crashes.log" ]; then
+  since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+  recent=$(awk -v s="$since" '$1 >= s' "$STATE_DIR/crashes.log" | wc -l)
+  if [ "$recent" -gt 0 ]; then
+    warn "crashes: $recent restart(s) in the last 24 h; see $STATE_DIR/crashes.log"
+    tail -n 3 "$STATE_DIR/crashes.log" | sed 's/^/      /'
+  else
+    pass "crashes: none in the last 24 h"
+  fi
+else
+  pass "crashes: none recorded"
+fi
+
+echo
+echo "$fails failed, $warns warning(s)"
+[ "$NO_FAIL" -eq 1 ] && exit 0
+[ "$fails" -eq 0 ]

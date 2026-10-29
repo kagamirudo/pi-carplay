@@ -52,8 +52,11 @@ Item {
                 width: list.width
                 height: 48
                 radius: 5
-                color: modelData.connected ? "#2f4a2c" : "#1a221a"
-                border.color: modelData.connected ? "#e6b325" : "#314231"
+                readonly property bool connected: modelData.connected === true
+                readonly property bool paired: modelData.paired === true
+                readonly property string address: modelData.address || ""
+                color: connected ? "#2f4a2c" : "#1a221a"
+                border.color: connected ? "#e6b325" : "#314231"
 
                 RowLayout {
                     anchors.fill: parent
@@ -65,7 +68,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 0
                         Label {
-                            text: modelData.name
+                            text: modelData.name || address || "Unknown device"
                             color: "#f4f6f2"
                             font.pixelSize: 15
                             font.bold: true
@@ -73,24 +76,23 @@ Item {
                             Layout.fillWidth: true
                         }
                         Label {
-                            text: modelData.connected ? "Connected" : (modelData.paired ? "Paired" : "Nearby")
-                            color: modelData.connected ? "#e6b325" : "#9aa394"
+                            text: connected ? "Connected" : (paired ? "Paired" : "Nearby")
+                            color: connected ? "#e6b325" : "#9aa394"
                             font.pixelSize: 12
                         }
                     }
                     ActionButton {
-                        text: modelData.connected ? "Disconnect" : "Connect"
-                        enabled: !bluetooth.busy
+                        text: connected ? "Disconnect" : "Connect"
+                        enabled: !bluetooth.busy && address !== ""
                         Layout.preferredWidth: 104
-                        onClicked: modelData.connected ? bluetooth.disconnectDevice(modelData.address)
-                                                       : bluetooth.connectDevice(modelData.address)
+                        onClicked: connected ? bluetooth.disconnectDevice(address) : bluetooth.connectDevice(address)
                     }
                     ActionButton {
                         text: "Forget"
-                        visible: modelData.paired
-                        enabled: !bluetooth.busy
+                        visible: paired
+                        enabled: !bluetooth.busy && address !== ""
                         Layout.preferredWidth: 72
-                        onClicked: bluetooth.forgetDevice(modelData.address)
+                        onClicked: bluetooth.forgetDevice(address)
                     }
                 }
             }

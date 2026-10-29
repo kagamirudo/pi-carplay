@@ -7,21 +7,23 @@ set -u
 
 HEADUNIT=@HEADUNIT@
 AUTOAPP_LAUNCHER=@AUTOAPP_LAUNCHER@
+SUPERVISE=@SUPERVISE@
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 
+"$SUPERVISE" --stop autoapp
+"$SUPERVISE" --stop headunit
+# Copies started by hand or by an older autostart.
 pkill -u "$(id -u)" -x autoapp
 pkill -u "$(id -u)" -x headunit
 sleep 0.5
-: > /tmp/autoapp.log
-: > /tmp/headunit.log
 
-"$HEADUNIT" >> /tmp/headunit.log 2>&1 &
+setsid -f "$SUPERVISE" headunit "$HEADUNIT" < /dev/null > /dev/null 2>&1
 sleep 3
-"$AUTOAPP_LAUNCHER" >> /tmp/autoapp.log 2>&1 &
+setsid -f "$SUPERVISE" autoapp "$AUTOAPP_LAUNCHER" < /dev/null > /dev/null 2>&1
 sleep 2
 
 # Google accessory (18d1) and Samsung (04e8) phones: drop and re-authorize the port.

@@ -1,0 +1,50 @@
+name: Bug report
+description: Something crashed, froze or misbehaved
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Crash, restart or frozen screen
+        - Android Auto lost or would not connect
+        - Bluetooth or audio problem
+        - Display or touch problem
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`dpkg -s pi-carplay | grep Version`, or the git commit for a source build"
+    validations:
+      required: true
+  - type: textarea
+    id: selftest
+    attributes:
+      label: pi-carplay-selftest output
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        `~/.local/state/pi-carplay/crashes.log` and the end of `headunit.log` or `autoapp.log` from the same
+        directory. Remove phone numbers, addresses or anything else private.
+      render: text
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and Android version
+      description: For Android Auto problems

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDBusConnection>
 #include <QDBusContext>
 #include <QDBusObjectPath>
 #include <QObject>
@@ -21,6 +22,8 @@ public:
 
     // Registers with BlueZ as the default agent. Returns an error text, or empty on success.
     QString registerWithBluez();
+    // Publishes the agent object at kPath on a bus without registering with BlueZ.
+    bool exportOn(QDBusConnection bus);
     void setTarget(const QString& devicePath, const QString& pin);
     void clearTarget();
 

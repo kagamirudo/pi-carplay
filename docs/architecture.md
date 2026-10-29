@@ -11,7 +11,7 @@ They are separate processes on purpose. A crash or restart of the projection nev
 
 ## Startup
 
-`~/.config/labwc/autostart` starts `headunit` first, then `autoapp` with `OPENAUTO_NO_MAIN_WINDOW=1`, so OpenAuto's own launcher never shows. When a phone connects, `autoapp` maps a frameless, always-on-top, full-screen window over the shell.
+`~/.config/labwc/autostart` starts `headunit` first, then `autoapp` with `OPENAUTO_NO_MAIN_WINDOW=1`, so OpenAuto's own launcher never shows. Each runs under `pi-carplay-supervise`, which restarts it if it exits and records the exit in `~/.local/state/pi-carplay/crashes.log`. A restarted shell maps above the projection; the shell's **Android Auto** button brings projection back. When a phone connects, `autoapp` maps a frameless, always-on-top, full-screen window over the shell.
 
 ## Video path
 

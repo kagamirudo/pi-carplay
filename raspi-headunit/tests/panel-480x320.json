@@ -1,0 +1,16 @@
+{
+    "synchronousWindowSystemEvents": true,
+    "windowFrameMargins": false,
+    "screens": [
+        {
+            "name": "SPI-1",
+            "x": 0,
+            "y": 0,
+            "width": 480,
+            "height": 320,
+            "logicalDpi": 96,
+            "logicalBaseDpi": 96,
+            "dpr": 1
+        }
+    ]
+}

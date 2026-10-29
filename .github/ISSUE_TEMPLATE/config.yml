@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/kagamirudo/pi-carplay/blob/main/docs/troubleshooting.md
+    about: White screen, black screen, touch and Android Auto fixes

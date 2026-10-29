@@ -38,6 +38,8 @@ make build
 make test
 ```
 
+`make test` needs the test tools once: `make deps-qa`.
+
 `make build` does the following:
 
 | Step | Result |

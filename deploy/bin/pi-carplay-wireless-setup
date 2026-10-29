@@ -87,8 +87,9 @@ ADAPTER=$(printf '%s' "$ADAPTER" | tr 'a-f' 'A-F')
 if [ -n "$ADAPTER" ] && ! [[ "$ADAPTER" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]]; then
   die "--adapter must look like AA:BB:CC:DD:EE:FF"
 fi
-if [ "${#SSID}" -gt 32 ] || [[ "$SSID" =~ [[:cntrl:]] ]] || [[ "$SSID" == *[=\;\#]* ]]; then
-  die "--ssid must be 1-32 printable characters without = ; or #"
+# NetworkManager keyfiles treat \ as an escape and strip outer spaces, so refuse them.
+if [ "${#SSID}" -gt 32 ] || [[ "$SSID" =~ [[:cntrl:]] ]] || [[ "$SSID" == *[=\;\#\\]* ]] || [[ "$SSID" == [[:space:]]* || "$SSID" == *[[:space:]] ]]; then
+  die "--ssid must be 1-32 printable characters without = ; # or \\, and no leading or trailing spaces"
 fi
 [[ " $CHANNELS " == *" $CHANNEL "* ]] || die "--channel must be one of: $CHANNELS"
 

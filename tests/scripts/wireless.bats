@@ -298,6 +298,10 @@ configure() {
   [ "$status" -eq 1 ]
   run "$SETUP" --ssid 'a=b'
   [ "$status" -eq 1 ]
+  run "$SETUP" --ssid 'Car\name'
+  [ "$status" -eq 1 ]
+  run "$SETUP" --ssid ' Car'
+  [ "$status" -eq 1 ]
   run "$SETUP" --bogus
   [ "$status" -eq 1 ]
   [ ! -e "$WIRELESS_CONF" ]

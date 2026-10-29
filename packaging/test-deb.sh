@@ -12,6 +12,13 @@ if [ "${1:-}" = --install ]; then
   shift
 fi
 DEB=$(realpath "${1:?usage: test-deb.sh [--install] <deb>}")
+if [ "$INSTALL" -eq 1 ]; then
+  [ "$(id -u)" -eq 0 ] || { echo "--install needs root (run it in a throwaway container)" >&2; exit 2; }
+  export DEBIAN_FRONTEND=noninteractive
+  # The static checks below need binutils, lintian and the runtime libraries.
+  apt-get install -y --no-install-recommends binutils lintian "$DEB" > /dev/null
+  apt-get purge -y pi-carplay > /dev/null
+fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 failures=0
@@ -82,8 +89,6 @@ check "headunit starts from the package tree" env QT_QPA_PLATFORM=offscreen HEAD
 # ---------------------------------------------------------------- install / purge
 
 if [ "$INSTALL" -eq 1 ]; then
-  [ "$(id -u)" -eq 0 ] || { echo "--install needs root (run it in a throwaway container)" >&2; exit 2; }
-  export DEBIAN_FRONTEND=noninteractive
   check "apt installs the package and its dependencies" apt-get install -y --no-install-recommends "$DEB"
   check "dpkg reports it installed" bash -c "dpkg-query -W -f='\${Status}' pi-carplay | grep -q 'install ok installed'"
   check "installed headunit starts" env QT_QPA_PLATFORM=offscreen HEADUNIT_NO_BLUETOOTH=1 \

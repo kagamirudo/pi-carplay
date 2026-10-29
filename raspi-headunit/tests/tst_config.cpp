@@ -133,6 +133,17 @@ private slots:
         std::filesystem::permissions(locked, std::filesystem::perms::owner_all);
     }
 
+    void saveUnderAFileFails() {
+        QTemporaryDir dir;
+        const auto blocker = write(dir, "blocker", "x");
+        ConfigurationManager manager;
+        std::string error;
+        QVERIFY(!manager.saveFile(blocker / "headunit.json", &error));
+        QVERIFY(!error.empty());
+        QVERIFY(!manager.saveFile(blocker / "sub" / "headunit.json", &error));
+        QVERIFY(!error.empty());
+    }
+
     void missingFileFails() {
         ConfigurationManager manager;
         std::string error;

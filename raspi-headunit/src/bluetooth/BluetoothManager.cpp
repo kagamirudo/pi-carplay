@@ -15,12 +15,13 @@ std::string readLine(const std::filesystem::path& path) {
 
 }  // namespace
 
-BluetoothManager::BluetoothManager(std::string carDevice) : carDevice_(std::move(carDevice)) {}
+BluetoothManager::BluetoothManager(std::string carDevice, std::filesystem::path rfkillRoot)
+    : carDevice_(std::move(carDevice)), rfkillRoot_(std::move(rfkillRoot)) {}
 
 StereoLink BluetoothManager::status() const {
     StereoLink link;
     link.carDevice = carDevice_;
-    const std::filesystem::path root("/sys/class/rfkill");
+    const std::filesystem::path& root = rfkillRoot_;
     std::error_code ec;
     if (!std::filesystem::is_directory(root, ec)) {
         link.detail = "No rfkill devices.";

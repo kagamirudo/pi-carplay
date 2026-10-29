@@ -6,7 +6,7 @@ namespace headunit {
 
 WiFiManager::Status WiFiManager::status() const {
     Status status;
-    std::ifstream in("/sys/class/net/wlan0/operstate");
+    std::ifstream in(netRoot_ / status.interfaceName / "operstate");
     if (!in) {
         return status;
     }

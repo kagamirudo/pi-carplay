@@ -146,6 +146,14 @@ The Pi has no ignition or speed signal today. Power most likely drops the moment
 
 Downloading is fine at any time the data policy allows. It is small, runs at low priority (`nice`, `ionice`, `curl --limit-rate`), and does not touch the running programs.
 
+### Memory and load budget
+
+The Pi has 4 GB of RAM and only 200 MB of swap, and running out of memory has already taken it down (several parallel sanitizer and coverage builds during development). An out-of-memory reset in the middle of `dpkg` is exactly the case that recovery must handle, so the updater avoids causing one:
+
+- `download` and `apply` skip their run when `MemAvailable` in `/proc/meminfo` is below 1200 MB, or when a heavy job holds `/tmp/pi-carplay-build.lock`, the lock that local builds and tests take (`flock /tmp/pi-carplay-build.lock nice -n 10 …`). They try again on the next timer run.
+- The units set `MemoryMax=` (for example 256M), `Nice=10` and `IOSchedulingClass=idle`, so a runaway download or a hung `dpkg` cannot push the shell or Android Auto out of memory.
+- Nothing in the updater compiles. It only downloads and installs prebuilt packages.
+
 ### Download, verify, install
 
 - Downloads go to `/var/cache/pi-carplay/partial/` and resume with `curl --continue-at -`, so a hotspot that drops halfway does not start from zero.

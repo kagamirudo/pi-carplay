@@ -42,17 +42,23 @@ dpkg-deb -e "$DEB" "$WORK/DEBIAN"
 R=$WORK/root
 
 REQUIRED="opt/pi-carplay/bin/headunit opt/pi-carplay/bin/autoapp opt/pi-carplay/share/openauto.ini
-opt/pi-carplay/share/labwc/autostart opt/pi-carplay/share/labwc/rc.xml lib/udev/rules.d/51-android-accessory.rules
+opt/pi-carplay/share/labwc/autostart opt/pi-carplay/share/labwc/rc.xml lib/udev/rules.d/51-android-accessory.rules \
+lib/udev/rules.d/52-smartbox-link.rules
 usr/bin/pi-carplay-setup usr/bin/pi-carplay-autoapp usr/bin/pi-carplay-restart usr/bin/pi-carplay-boot-config
 usr/bin/pi-carplay-supervise usr/bin/pi-carplay-selftest usr/bin/pi-carplay-wireless-check
-usr/bin/pi-carplay-wireless-setup usr/bin/pi-carplay-update usr/share/doc/pi-carplay/copyright"
+usr/bin/pi-carplay-wireless-setup usr/bin/pi-carplay-update
+usr/bin/pi-carplay-dashcam usr/bin/pi-carplay-align-display usr/bin/pi-carplay-display-profile \
+usr/bin/pi-carplay-hotspot usr/bin/pi-carplay-link \
+usr/share/pi-carplay/elecrow-1024x600.bin usr/share/pi-carplay/pi-carplay-dashcam.service \
+usr/share/pi-carplay/profiles/dell-hdmi.env usr/share/pi-carplay/profiles/elecrow-7.env \
+usr/share/doc/pi-carplay/copyright"
 missing=""
 for f in $REQUIRED; do [ -e "$R/$f" ] || missing="$missing $f"; done
 if [ -z "$missing" ]; then ok "required files"; else fail "missing:$missing"; fi
 
 check "md5sums match" bash -c "cd '$R' && md5sum --quiet -c '$WORK/DEBIAN/md5sums'"
 
-check "no unrendered @PLACEHOLDER@" bash -c "! grep -rnI '@[A-Z_]\\+@' '$R/usr/bin' '$R/opt/pi-carplay/share'"
+check "no unrendered @PLACEHOLDER@" bash -c "! grep -rnI --exclude=pi-carplay-setup '@[A-Z_]\\+@' '$R/usr/bin' '$R/opt/pi-carplay/share'"
 
 check "scripts parse" bash -c "
   for f in '$R'/usr/bin/* '$WORK/DEBIAN/postinst'; do

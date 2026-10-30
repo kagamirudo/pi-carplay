@@ -59,8 +59,15 @@ done
 render "$REPO/deploy/bin/pi-carplay-autoapp" > "$STAGE/usr/bin/pi-carplay-autoapp"
 render "$REPO/deploy/bin/aa-restart.sh" > "$STAGE/usr/bin/pi-carplay-restart"
 install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-carplay-supervise" \
-  "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/tools/pi-carplay-selftest" \
+  "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/deploy/bin/pi-carplay-dashcam" \
+  "$REPO/deploy/bin/pi-carplay-align-display" "$REPO/deploy/bin/pi-carplay-display-profile" \
+  "$REPO/deploy/bin/pi-carplay-hotspot" "$REPO/deploy/bin/pi-carplay-link" \
+  "$REPO/tools/pi-carplay-selftest" \
   "$REPO/tools/pi-carplay-wireless-check" "$REPO/tools/pi-carplay-update" "$STAGE/usr/bin/"
+install -d "$STAGE/usr/share/pi-carplay/profiles"
+install -m 0644 "$REPO/deploy/display/profiles/"*.env "$STAGE/usr/share/pi-carplay/profiles/"
+install -m 0644 "$REPO/deploy/display/elecrow-1024x600.bin" \
+  "$REPO/deploy/systemd/pi-carplay-dashcam.service" "$STAGE/usr/share/pi-carplay/"
 install -m 0755 "$REPO/packaging/pi-carplay-setup" "$STAGE/usr/bin/"
 chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restart"
 
@@ -68,7 +75,8 @@ chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restar
 render "$REPO/deploy/labwc/autostart" > "$STAGE/$PREFIX/share/labwc/autostart"
 install -m 0644 "$REPO/deploy/labwc/rc.xml" "$STAGE/$PREFIX/share/labwc/rc.xml"
 install -m 0644 "$REPO/deploy/openauto/openauto.ini" "$STAGE/$PREFIX/share/openauto.ini"
-install -m 0644 "$REPO/deploy/udev/51-android-accessory.rules" "$STAGE/lib/udev/rules.d/"
+install -m 0644 "$REPO/deploy/udev/51-android-accessory.rules" \
+  "$REPO/deploy/udev/52-smartbox-link.rules" "$STAGE/lib/udev/rules.d/"
 
 # Docs and licenses
 install -m 0644 "$REPO/README.md" "$STAGE/usr/share/doc/$PKG/README.md"

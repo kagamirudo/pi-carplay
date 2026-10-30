@@ -1,0 +1,147 @@
+#!/bin/bash
+# Pick the active Wayland output and point headunit + OpenAuto at it.
+# The active display profile (dell-hdmi or elecrow-7) chooses scale and
+# the Android Auto video mode. Missing profile keeps the Dell 150% scale.
+set -euo pipefail
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+
+HEADUNIT_CFG="${HEADUNIT_CFG:-$HOME/.config/raspi-headunit/headunit.json}"
+OPENAUTO_INI="${OPENAUTO_INI:-$HOME/src/openauto/bin/openauto.ini}"
+OPENAUTO_DEPLOY="${OPENAUTO_DEPLOY:-$HOME/CarPlay/deploy/openauto/openauto.ini}"
+PROFILE_NAME="$(cat "$HOME/.config/pi-carplay/display-profile" 2>/dev/null || echo dell-hdmi)"
+PROFILE_ENV="$HOME/.config/pi-carplay/profiles/${PROFILE_NAME}.env"
+
+SCALE=1.5
+AA_RES=""
+AA_DPI=""
+AA_MARGIN_W=""
+AA_MARGIN_H=""
+FORCE_W=""
+FORCE_H=""
+if [[ -f "$PROFILE_ENV" ]]; then
+  # shellcheck disable=SC1090
+  source "$PROFILE_ENV"
+fi
+
+if ! command -v wlr-randr >/dev/null; then
+  echo "wlr-randr missing" >&2
+  exit 1
+fi
+
+mapfile -t RAW < <(wlr-randr)
+OUT=""; W=""; H=""
+name=""; enabled="no"; mode_w=""; mode_h=""
+flush() {
+  if [[ -n "$name" && "$enabled" == "yes" && -n "$mode_w" ]]; then
+    if [[ -z "$OUT" || "$name" == HDMI* ]]; then
+      OUT="$name"; W="$mode_w"; H="$mode_h"
+    fi
+  fi
+}
+for line in "${RAW[@]}"; do
+  if [[ "$line" =~ ^([A-Za-z0-9-]+)[[:space:]] ]]; then
+    flush
+    name="${BASH_REMATCH[1]}"
+    enabled="no"; mode_w=""; mode_h=""
+  elif [[ "$line" =~ Enabled:[[:space:]]+(yes|no) ]]; then
+    enabled="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ ([0-9]+)x([0-9]+)[[:space:]]px.*current ]]; then
+    mode_w="${BASH_REMATCH[1]}"; mode_h="${BASH_REMATCH[2]}"
+  fi
+done
+flush
+
+if [[ -z "$OUT" ]]; then
+  first=$(wlr-randr | awk '/^[A-Za-z0-9-]/{print $1; exit}')
+  if [[ -n "$first" ]]; then
+    wlr-randr --output "$first" --on
+    sleep 0.3
+    exec "$0" "$@"
+  fi
+  echo "no display outputs found" >&2
+  exit 1
+fi
+
+while read -r other; do
+  [[ -z "$other" || "$other" == "$OUT" ]] && continue
+  wlr-randr --output "$other" --off 2>/dev/null || true
+done < <(wlr-randr | awk '/^[A-Za-z0-9-]/{print $1}')
+wlr-randr --output "$OUT" --on 2>/dev/null || true
+
+if [[ "$OUT" == HDMI* ]]; then
+  wlr-randr --output "$OUT" --scale "$SCALE" 2>/dev/null || true
+  read -r W H <<EOF
+$(python3 - "$W" "$H" "$SCALE" <<'PY'
+import sys
+w, h, scale = int(sys.argv[1]), int(sys.argv[2]), float(sys.argv[3])
+print(round(w / scale), round(h / scale))
+PY
+)
+EOF
+fi
+
+RES=1; MARGIN_W=80; MARGIN_H=0; DPI=130
+if [[ "$OUT" == SPI* ]]; then
+  W=480; H=320
+  RES=1; MARGIN_W=80; MARGIN_H=0; DPI=130
+elif [[ -n "${FORCE_W}" && -n "${FORCE_H}" && "$OUT" == HDMI* ]]; then
+  W="$FORCE_W"; H="$FORCE_H"
+  RES="${AA_RES:-2}"; MARGIN_W="${AA_MARGIN_W:-0}"; MARGIN_H="${AA_MARGIN_H:-0}"; DPI="${AA_DPI:-160}"
+elif [[ -n "${AA_RES}" && "$OUT" == HDMI* ]]; then
+  RES="$AA_RES"; MARGIN_W="${AA_MARGIN_W:-0}"; MARGIN_H="${AA_MARGIN_H:-0}"; DPI="${AA_DPI:-110}"
+elif (( W >= 1800 && H >= 900 )); then
+  RES=3; MARGIN_W=0; MARGIN_H=0; DPI=96
+elif (( W >= 1200 && H >= 700 )); then
+  RES=2; MARGIN_W=0; MARGIN_H=0; DPI=110
+else
+  RES=1; MARGIN_W=0; MARGIN_H=0; DPI=120
+fi
+
+python3 - "$HEADUNIT_CFG" "$OUT" "$W" "$H" <<'PY'
+import json, sys
+from pathlib import Path
+path, output, w, h = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+path.parent.mkdir(parents=True, exist_ok=True)
+data = {}
+if path.exists():
+    data = json.loads(path.read_text())
+display = data.setdefault("display", {})
+display["width"] = w
+display["height"] = h
+display["output"] = output
+display["fullscreen"] = True
+path.write_text(json.dumps(data, indent=2) + "\n")
+print(f"headunit: {output} {w}x{h} fullscreen")
+PY
+
+update_ini() {
+  local ini="$1"
+  [[ -f "$ini" ]] || return 0
+  python3 - "$ini" "$RES" "$MARGIN_W" "$MARGIN_H" "$DPI" <<'PY'
+import sys, re
+from pathlib import Path
+path = Path(sys.argv[1])
+res, mw, mh, dpi = sys.argv[2:6]
+text = path.read_text()
+def set_key(section_key, value, text):
+    sec, key = section_key.split(".", 1)
+    pattern = rf"(?m)(\[{re.escape(sec)}\][^\[]*?^{re.escape(key)}=)([^\n]*)"
+    if re.search(pattern, text):
+        return re.sub(pattern, rf"\g<1>{value}", text, count=1)
+    sec_pat = rf"(?ms)(\[{re.escape(sec)}\]\n)"
+    if re.search(sec_pat, text):
+        return re.sub(sec_pat, rf"\1{key}={value}\n", text, count=1)
+    return text + f"\n[{sec}]\n{key}={value}\n"
+for k, v in [("Video.Resolution", res), ("Video.MarginWidth", mw),
+             ("Video.MarginHeight", mh), ("Video.ScreenDPI", dpi)]:
+    text = set_key(k, v, text)
+path.write_text(text)
+print(f"openauto({path}): Resolution={res} margins={mw}x{mh} dpi={dpi}")
+PY
+}
+
+update_ini "$OPENAUTO_INI"
+update_ini "$OPENAUTO_DEPLOY"
+echo "aligned to $OUT ${W}x${H} profile=${PROFILE_NAME} scale=${SCALE}"

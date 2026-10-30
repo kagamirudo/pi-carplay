@@ -1,0 +1,170 @@
+#!/bin/bash
+# Record the Camera Module 3 (imx708) onto the SD footage volume.
+# Segments and the byte budget come from headunit.json so the UI and
+# this service share one setting. The headunit process itself does not
+# open the camera; this service does.
+set -u
+
+HEADUNIT_CFG="${HEADUNIT_CFG:-$HOME/.config/raspi-headunit/headunit.json}"
+ROTATION="${ROTATION:-0}"
+
+eval "$(python3 - "$HEADUNIT_CFG" <<'PY'
+import json, shlex, sys
+cfg = json.load(open(sys.argv[1]))
+dash = cfg["dashcam"]
+clips = dash["clipsDirectory"]
+limit = int(dash["storageLimitBytes"])
+reserve = int(dash["reserveBytes"])
+if not clips or limit <= reserve:
+    raise SystemExit("dashcam clipsDirectory/storageLimitBytes is not a footage budget")
+print(f"CLIPS={shlex.quote(clips)}")
+print(f"USABLE={limit - reserve}")
+print(f"WIDTH={int(dash['width'])}")
+print(f"HEIGHT={int(dash['height'])}")
+print(f"FPS={int(dash['fps'])}")
+print(f"SEGMENT_MS={int(dash['segmentSeconds']) * 1000}")
+PY
+)"
+
+mkdir -p "$CLIPS"
+if ! findmnt -n /mnt/dashcam >/dev/null; then
+  echo "dashcam: /mnt/dashcam is not mounted" >&2
+  exit 1
+fi
+
+evict() {
+  python3 - "$CLIPS" "$USABLE" <<'PY'
+import os, sys, time
+clips, usable = sys.argv[1], int(sys.argv[2])
+files = []
+for name in os.listdir(clips):
+    path = os.path.join(clips, name)
+    if not os.path.isfile(path):
+        continue
+    if not name.endswith((".mp4", ".h264", ".mkv")):
+        continue
+    files.append((os.path.getmtime(path), os.path.getsize(path), path))
+files.sort()
+used = sum(size for _, size, _ in files)
+now = time.time()
+for _mtime, size, path in files:
+    if used <= usable:
+        break
+    # The file rpicam-vid has open is still being written.
+    if os.path.getmtime(path) > now - 90:
+        continue
+    os.remove(path)
+    used -= size
+    print(f"evict {path}")
+PY
+}
+
+EVICT_PID=""
+WATCH_PID=""
+cleanup() {
+  if [[ -n "${RPID:-}" ]]; then kill "$RPID" 2>/dev/null || true; fi
+  # rpicam-vid is the foreground child. A trapped TERM must still stop it,
+  # or systemd waits out the stop timeout and the camera stays busy.
+  pkill -TERM -P $$ rpicam-vid 2>/dev/null || true
+  if [[ -n "$EVICT_PID" ]]; then kill "$EVICT_PID" 2>/dev/null || true; fi
+  if [[ -n "$WATCH_PID" ]]; then kill "$WATCH_PID" 2>/dev/null || true; fi
+  exit 0
+}
+trap cleanup INT TERM
+
+(
+  while true; do
+    evict || true
+    sleep 30
+  done
+) &
+EVICT_PID=$!
+
+# libav MP4 cannot be split with --segment, so each file is one full segment.
+# Lens position 0 is infinity on imx708. Set ROTATION=180 if the picture is upside down.
+# The Cam tab writes "on" or "off". Missing means off, so the picture does not
+# cover the screen until Preview is pressed. Closing the window also writes off.
+FLAG="${XDG_STATE_HOME:-$HOME/.local/state}/pi-carplay/dashcam-preview"
+MODE="${XDG_STATE_HOME:-$HOME/.local/state}/pi-carplay/dashcam-preview-mode"
+mkdir -p "$(dirname "$FLAG")"
+[[ -f "$FLAG" ]] || printf 'off\n' > "$FLAG"
+
+preview_on() {
+  [[ "$(tr -d '[:space:]' < "$FLAG" 2>/dev/null || true)" == "on" ]]
+}
+
+# Qt preview is the one that actually maps on this labwc session.
+# EGL and DRM both report "preview window unavailable" while the desktop owns the display.
+preview_geom() {
+  python3 - <<'PY'
+import re, subprocess
+text = subprocess.check_output(["wlr-randr"], text=True, stderr=subprocess.DEVNULL)
+w = h = None
+name = ""
+for line in text.splitlines():
+    if line and not line.startswith(" "):
+        name = line.split()[0]
+    if "current" in line and name.startswith("HDMI"):
+        match = re.search(r"(\d+)x(\d+)", line)
+        if match:
+            w, h = int(match.group(1)), int(match.group(2))
+if not w:
+    w, h = 1920, 1080
+# Leave the tab bar and the Cam status block visible.
+top = max(48, int(h * 0.22))
+margin = 16
+width = max(2, ((w - 2 * margin) // 2) * 2)
+height = max(2, ((h - top - margin) // 2) * 2)
+print(f"{margin},{top},{width},{height}")
+PY
+}
+
+MAINPID=$$
+(
+  while true; do
+    want=off
+    preview_on && want=on
+    active="$(tr -d '[:space:]' < "$MODE" 2>/dev/null || true)"
+    if [[ -n "$active" && "$want" != "$active" ]]; then
+      pkill -TERM -P "$MAINPID" rpicam-vid 2>/dev/null || true
+    fi
+    sleep 0.3
+  done
+) &
+WATCH_PID=$!
+
+while true; do
+  want=off
+  preview_on && want=on
+  printf '%s\n' "$want" > "$MODE"
+  preview_args=(-n)
+  if [[ "$want" == "on" ]]; then
+    wl_sock="${XDG_RUNTIME_DIR:-}/${WAYLAND_DISPLAY:-}"
+    if [[ -n "${XDG_RUNTIME_DIR:-}" && -n "${WAYLAND_DISPLAY:-}" && -S "$wl_sock" ]]; then
+      geom="${PREVIEW_GEOM:-$(preview_geom)}"
+      preview_args=(--qt-preview --preview "$geom")
+    fi
+  fi
+  stamp=$(date +%Y%m%d-%H%M%S)
+  started=$SECONDS
+  set +e
+  rpicam-vid -t "$SEGMENT_MS" \
+    --width "$WIDTH" --height "$HEIGHT" --framerate "$FPS" \
+    --codec libav --libav-format mp4 \
+    --rotation "$ROTATION" \
+    --autofocus-mode manual --lens-position 0 \
+    "${preview_args[@]}" \
+    -o "$CLIPS/dash-${stamp}.mp4"
+  rc=$?
+  set -e
+  # The window's close button ends rpicam before the segment does. Remember
+  # that, or the next segment opens the picture again.
+  elapsed=$((SECONDS - started))
+  limit=$((SEGMENT_MS / 1000 - 5))
+  if [[ "$limit" -lt 5 ]]; then limit=5; fi
+  if [[ "${preview_args[0]}" == "--qt-preview" && "$elapsed" -lt "$limit" ]]; then
+    printf 'off\n' > "$FLAG"
+  elif [[ "$rc" -ne 0 ]]; then
+    sleep 2
+  fi
+done

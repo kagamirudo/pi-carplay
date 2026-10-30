@@ -1,0 +1,8 @@
+# smartBox dongle (Xiaomi MTP, then Android accessory) and a phone already in
+# accessory mode. The script turns the Pi hotspot off while that device is
+# present and back on when it is gone. On remove the sysfs attributes are
+# gone, so the match uses the ids udev stored for the device.
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="18d1", ATTR{idProduct}=="2d00", RUN+="/usr/bin/systemd-run --no-block --collect /usr/bin/pi-carplay-link --now"
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="2717", ATTR{idProduct}=="ff40", RUN+="/usr/bin/systemd-run --no-block --collect /usr/bin/pi-carplay-link --now"
+ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_VENDOR_ID}=="18d1", ENV{ID_MODEL_ID}=="2d00", RUN+="/usr/bin/systemd-run --no-block --collect /usr/bin/pi-carplay-link --now"
+ACTION=="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_VENDOR_ID}=="2717", ENV{ID_MODEL_ID}=="ff40", RUN+="/usr/bin/systemd-run --no-block --collect /usr/bin/pi-carplay-link --now"

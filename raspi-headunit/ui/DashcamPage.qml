@@ -20,6 +20,11 @@ Flickable {
             font.pixelSize: 28
             font.bold: true
         }
+        ActionButton {
+            width: parent.width
+            text: shell.previewOpen ? "Close preview" : "Preview"
+            onClicked: shell.togglePreview()
+        }
         Label { text: shell.recordDetail; color: "#f4f6f2"; font.pixelSize: 14; width: parent.width; wrapMode: Text.WordWrap }
         Label { text: shell.recordGeometry; color: "#d5ddd2"; font.pixelSize: 14 }
         Label { text: shell.segmentLabel; color: "#d5ddd2"; font.pixelSize: 14 }

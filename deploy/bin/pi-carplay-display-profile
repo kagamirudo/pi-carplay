@@ -1,0 +1,113 @@
+#!/bin/bash
+# Switch the CarPlay display profile. The Dell profile is the one that is
+# active until the Elecrow panel is plugged in.
+#
+#   pi-carplay-display-profile list
+#   pi-carplay-display-profile use elecrow-7
+#   pi-carplay-display-profile use dell-hdmi --reboot
+#   pi-carplay-display-profile touch
+set -euo pipefail
+
+CONFIG_DIR="${HOME}/.config/pi-carplay"
+PROFILE_DIR="${CONFIG_DIR}/profiles"
+ACTIVE="${CONFIG_DIR}/display-profile"
+CMDLINE=/boot/firmware/cmdline.txt
+CONFIG=/boot/firmware/config.txt
+EDID_SRC="${HOME}/.local/share/pi-carplay/elecrow-1024x600.bin"
+if [[ ! -f "$EDID_SRC" && -f /usr/share/pi-carplay/elecrow-1024x600.bin ]]; then
+  EDID_SRC=/usr/share/pi-carplay/elecrow-1024x600.bin
+fi
+EDID_DST=/lib/firmware/edid/elecrow-1024x600.bin
+KANSHI="${HOME}/.config/kanshi/config"
+
+usage() {
+  echo "usage: pi-carplay-display-profile list|current|touch|use <dell-hdmi|elecrow-7> [--reboot]" >&2
+  exit 2
+}
+
+current() {
+  if [[ -f "$ACTIVE" ]]; then
+    cat "$ACTIVE"
+  else
+    echo "dell-hdmi"
+  fi
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  list)
+    dir="$PROFILE_DIR"
+    [[ -d "$dir" ]] || dir=/usr/share/pi-carplay/profiles
+    for f in "$dir"/*.env; do
+      name=$(basename "$f" .env)
+      mark=" "
+      [[ "$name" == "$(current)" ]] && mark="*"
+      printf "%s %s\n" "$mark" "$name"
+    done
+    ;;
+  current) current ;;
+  touch)
+    echo "USB touch devices:"
+    for ev in /dev/input/event*; do
+      name=$(udevadm info -q property -n "$ev" 2>/dev/null | sed -n "s/^ID_INPUT_TOUCHSCREEN=//p")
+      dev=$(udevadm info -q property -n "$ev" 2>/dev/null | sed -n "s/^NAME=//p; s/^ID_MODEL=//p" | head -2)
+      [[ "$name" == "1" ]] && printf "%s  %s\n" "$ev" "$dev"
+    done
+    ;;
+  use)
+    name="${2:-}"
+    reboot_flag="${3:-}"
+    envf="$PROFILE_DIR/${name}.env"
+    if [[ ! -f "$envf" && -f "/usr/share/pi-carplay/profiles/${name}.env" ]]; then
+      envf="/usr/share/pi-carplay/profiles/${name}.env"
+    fi
+    [[ -f "$envf" ]] || usage
+    # shellcheck disable=SC1090
+    source "$envf"
+    mkdir -p "$CONFIG_DIR" "$(dirname "$KANSHI")"
+    printf "%s\n" "$name" > "$ACTIVE"
+
+    cat > "$KANSHI" <<EOF
+profile ${PROFILE} {
+  output HDMI-A-1 enable ${KANSHI_MODE} position 0,0
+}
+EOF
+
+    sudo mkdir -p /lib/firmware/edid
+    if [[ -f "$EDID_SRC" ]]; then
+      sudo cp "$EDID_SRC" "$EDID_DST"
+    fi
+
+    sudo python3 - "$CMDLINE" "$CONFIG" "${CMDLINE_EXTRA}" "${USB_MAX_CURRENT}" <<'PY'
+import sys
+from pathlib import Path
+cmdline, config, extra, usb = sys.argv[1:]
+path = Path(cmdline)
+text = path.read_text().strip().split()
+drop_prefixes = ("video=", "drm.edid_firmware=")
+kept = [tok for tok in text if not tok.startswith(drop_prefixes)]
+if extra:
+    kept.extend(extra.split())
+path.write_text(" ".join(kept) + "\n")
+print("cmdline:", " ".join(kept))
+
+cfg = Path(config)
+body = cfg.read_text().splitlines()
+body = [line for line in body if line.strip() not in {
+    "usb_max_current_enable=1",
+    "# pi-carplay elecrow panel power",
+}]
+if usb == "1":
+    body.append("# pi-carplay elecrow panel power")
+    body.append("usb_max_current_enable=1")
+cfg.write_text("\n".join(body) + "\n")
+print("usb_max_current_enable:", "on" if usb == "1" else "off")
+PY
+
+    echo "profile ${name} saved. Video mode is applied on the next boot."
+    if [[ "$reboot_flag" == "--reboot" ]]; then
+      sudo reboot
+    fi
+    ;;
+  *) usage ;;
+esac

@@ -127,9 +127,9 @@ res, mw, mh, dpi = sys.argv[2:6]
 text = path.read_text()
 def set_key(section_key, value, text):
     sec, key = section_key.split(".", 1)
-    pattern = rf"(?ms)(\[{re.escape(sec)}\][^\[]*?^{re.escape(key)}=)(.*)$"
-    if re.search(pattern, text, re.M):
-        return re.sub(pattern, rf"\g<1>{value}", text, count=1, flags=re.M)
+    pattern = rf"(?m)(\[{re.escape(sec)}\][^\[]*?^{re.escape(key)}=)([^\n]*)"
+    if re.search(pattern, text):
+        return re.sub(pattern, rf"\g<1>{value}", text, count=1)
     sec_pat = rf"(?ms)(\[{re.escape(sec)}\]\n)"
     if re.search(sec_pat, text):
         return re.sub(sec_pat, rf"\1{key}={value}\n", text, count=1)

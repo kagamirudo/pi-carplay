@@ -119,7 +119,7 @@ Item {
         }
 
         Label {
-            text: "New networks are added once with pi-carplay-wireless-setup (no keyboard here to type a password)."
+            text: "No keyboard here: join a new network once over SSH (nmcli device wifi connect \"SSID\" password …); it then shows as Saved."
             color: "#6f7a6b"
             font.pixelSize: 11
             wrapMode: Text.WordWrap

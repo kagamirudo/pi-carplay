@@ -164,6 +164,20 @@ def write_stl(solid: Manifold, path: Path):
     return bb
 
 
+def rib_x(x, y, z0, z1, w=3.4):
+    """Solid brace from (x, y) to the nearer left/right wall, tying a boss in."""
+    if x < W / 2:
+        return cube(x, w, z1 - z0, 0.0, y - w / 2, z0)
+    return cube(W - x, w, z1 - z0, x, y - w / 2, z0)
+
+
+def rib_y(x, y, z0, z1, w=3.4):
+    """Solid brace from (x, y) to the nearer top/bottom wall."""
+    if y < H / 2:
+        return cube(w, y, z1 - z0, x - w / 2, 0.0, z0)
+    return cube(w, H - y, z1 - z0, x - w / 2, y, z0)
+
+
 def display_holes(origin_x, origin_y):
     return [
         (origin_x + HOLE_INSET, origin_y + HOLE_INSET),
@@ -183,9 +197,9 @@ def bezel():
     part -= cube(OPEN_W, OPEN_H, FRONT + 0.1, open_x, open_y, -0.05)
     for x, y in display_holes(mod_x, mod_y):
         part -= hole_z(2.1, FRONT + 0.2, x, y, -0.1)  # Ø4.2, M3 with slack
-    # Two 3 mm alignment pins on the back face.
-    for x, y in ((14, 14), (W - 14, H - 14)):
-        part += hole_z(1.5, 4.0, x, y, BEZEL_Z - 0.05)
+    # The four corner screws align the bezel to the rear shell; the old back-face
+    # "alignment pins" sat in the window pocket (bezel only FRONT thick there), so
+    # they printed as floating stubs. Dropped.
     bb = part.bounding_box()
     assert abs(bb[3] - W) < 0.05 and abs(bb[4] - H) < 0.05
     # Opening stays on the glass, clear of the corner screws.
@@ -196,21 +210,28 @@ def bezel():
 def rear_shell():
     part = cube(W, H, REAR_D)
     part -= cube(W - 2 * WALL, H - 2 * WALL, REAR_D - WALL + 0.05, WALL, WALL, -0.05)
-    # Alignment sockets for the bezel pins.
-    for x, y in ((14, 14), (W - 14, H - 14)):
-        part -= hole_z(1.65, 4.5, x, y, -0.1)
     # Bosses reach 0.6 mm into the bezel and land on the PCB around each
     # corner hole. The M3 nut drops in from the open end of the boss.
     mod_x = WALL + CLEAR
     mod_y = WALL + CLEAR
     for x, y in display_holes(mod_x, mod_y):
         part += cyl(8.6, 4.2, seg=48).translate((x, y, -0.6))
+        # Brace each corner boss to its two nearby walls so it is not a floating
+        # island (also a corner shelf for the PCB).
+        part += rib_x(x, y, -0.6, 8.0)
+        part += rib_y(x, y, -0.6, 8.0)
         part -= hole_z(2.1, 9.2, x, y, -0.8)
         part -= hex_z(5.7, 2.8, x, y, 5.2)  # M3 nut, 5.5 mm across flats
     # Pi bosses. Nut opens toward the board.
     for hx, hy in PI_HOLES:
         x, y = PI_X + hx, PI_Y + hy
         part += cyl(7.0, 4.2).translate((x, y, PI_Z - 7.0))
+        # Tie each standoff to the nearest wall; without this they floated in the
+        # cavity with nothing holding them.
+        if min(x, W - x) <= min(y, H - y):
+            part += rib_x(x, y, PI_Z - 7.0, PI_Z)
+        else:
+            part += rib_y(x, y, PI_Z - 7.0, PI_Z)
         part -= hole_z(1.45, 8.0, x, y, PI_Z - 7.2)          # Ø2.9
         part -= hex_z(5.2, 2.0, x, y, PI_Z - 2.0)            # M2.5 nut
     # USB-A and Ethernet, right wall.
@@ -256,10 +277,12 @@ def camera_bracket():
     plate = plate.translate((
         (CAM_FOOT_W - plate_w) / 2 - bb[0],
         8.0 - bb[1],
-        3.6 - bb[2],
+        2.0 - bb[2],   # sink the plate 2 mm into the foot for a solid weld
     ))
     part = foot + plate
-    part -= cube(16, 2.4, 3.2, (CAM_FOOT_W - 16) / 2, 4.0, 0.4)
+    # Clearance slot in front of the plate, cut fully through the foot so it
+    # cannot leave a detached sliver.
+    part -= cube(16, 2.4, 4.4, (CAM_FOOT_W - 16) / 2, 4.0, -0.2)
     stand = part.bounding_box()
     if stand[5] < 20:
         raise SystemExit(f"camera bracket does not stand up ({stand})")

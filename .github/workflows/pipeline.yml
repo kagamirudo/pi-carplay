@@ -17,10 +17,39 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  # Decide whether build-relevant files changed. On pull requests that touch only
+  # docs/hardware, the heavy gates below skip; the 'CI passed' gate still goes green.
+  changes:
+    name: Detect build changes
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            build:
+              - 'raspi-headunit/**'
+              - 'packaging/**'
+              - 'deploy/**'
+              - 'tools/**'
+              - 'tests/**'
+              - 'config/**'
+              - 'patches/**'
+              - 'Makefile'
+              - 'VERSION'
+              - '.github/workflows/**'
+
   lint:
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.build == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,12 +62,16 @@ jobs:
 
   build:
     name: Build and test
+    needs: changes
+    if: needs.changes.outputs.build == 'true' || github.event_name != 'pull_request'
     uses: ./.github/workflows/build.yml
     with:
       version: ${{ inputs.version }}
 
   sanitizers:
     name: ASan + UBSan
+    needs: changes
+    if: needs.changes.outputs.build == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     container:
       image: debian:bookworm
@@ -61,6 +94,8 @@ jobs:
 
   coverage:
     name: Coverage
+    needs: changes
+    if: needs.changes.outputs.build == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     container: debian:bookworm
     timeout-minutes: 60
@@ -98,7 +133,8 @@ jobs:
 
   package-install:
     name: Install test (clean Bookworm)
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.build == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     container: debian:bookworm
     timeout-minutes: 30
@@ -121,14 +157,14 @@ jobs:
   passed:
     name: CI passed
     if: always()
-    needs: [lint, build, sanitizers, coverage, package-install]
+    needs: [changes, lint, build, sanitizers, coverage, package-install]
     runs-on: ubuntu-latest
     steps:
       - name: Every gate passed
         run: |
           results='${{ toJSON(needs.*.result) }}'
           echo "$results"
-          if echo "$results" | grep -Eq '"(failure|cancelled|skipped)"'; then
+          if echo "$results" | grep -Eq '"(failure|cancelled)"'; then
             echo "::error::A required gate did not pass"
             exit 1
           fi

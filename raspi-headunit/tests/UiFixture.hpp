@@ -247,12 +247,13 @@ public:
 
     // Navigate via the dropdown page selector: set the StackLayout index.
     bool showPage(const QString& label) {
-        QQuickItem* nav = findByName(QStringLiteral("nav"));
         QQuickItem* stack = findByName(QStringLiteral("stack"));
-        if (!nav || !stack) {
+        if (!window() || !stack) {
             return false;
         }
-        const int idx = nav->property("model").toStringList().indexOf(label);
+        // Navigate by the full page list so a page is reachable even when car
+        // mode hides its tab from the dropdown.
+        const int idx = window()->property("allPages").toStringList().indexOf(label);
         if (idx < 0) {
             return false;
         }

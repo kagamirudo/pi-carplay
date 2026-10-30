@@ -18,16 +18,6 @@ Item {
                 onClicked: wifi.scan()
             }
             Item { Layout.fillWidth: true }
-            Label {
-                text: "Hotspot"
-                color: "#f4f6f2"
-                font.pixelSize: 14
-            }
-            Switch {
-                checked: wifi.hotspotActive
-                enabled: !wifi.busy
-                onToggled: wifi.setHotspot(checked)
-            }
             BusyIndicator {
                 running: wifi.scanning || wifi.busy
                 visible: running

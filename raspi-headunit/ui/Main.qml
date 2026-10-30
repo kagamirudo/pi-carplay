@@ -22,6 +22,24 @@ ApplicationWindow {
     palette.base: "#1a221a"
     palette.text: "#f4f6f2"
 
+    readonly property var allPages: ["Home", "Phone", "Cam", "Bluetooth", "Wi-Fi", "Setup"]
+    // Car mode hides the Wi-Fi client tab and runs the wireless-Android-Auto hotspot.
+    readonly property var navPages: shell.carMode
+        ? ["Home", "Phone", "Cam", "Bluetooth", "Setup"]
+        : allPages
+
+    Connections {
+        target: shell
+        function onChanged() {
+            if (shell.carMode && stack.currentIndex === 4) {
+                stack.currentIndex = 0
+            }
+            if (wifi.hotspotActive !== shell.carMode) {
+                wifi.setHotspot(shell.carMode)
+            }
+        }
+    }
+
     // A dropdown page selector instead of a row of tabs — scales to any number
     // of pages and stays uncluttered on the 7" screen.
     header: Rectangle {
@@ -37,9 +55,9 @@ ApplicationWindow {
                 objectName: "nav"
                 Layout.preferredWidth: 240
                 Layout.fillHeight: true
-                model: ["Home", "Phone", "Cam", "Bluetooth", "Wi-Fi", "Setup"]
-                currentIndex: stack.currentIndex
-                onActivated: stack.currentIndex = currentIndex
+                model: window.navPages
+                currentIndex: Math.max(0, window.navPages.indexOf(window.allPages[stack.currentIndex]))
+                onActivated: stack.currentIndex = window.allPages.indexOf(window.navPages[currentIndex])
                 font.pixelSize: 16
 
                 contentItem: Text {

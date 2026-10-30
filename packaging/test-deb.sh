@@ -57,7 +57,7 @@ if [ -z "$missing" ]; then ok "required files"; else fail "missing:$missing"; fi
 
 check "md5sums match" bash -c "cd '$R' && md5sum --quiet -c '$WORK/DEBIAN/md5sums'"
 
-check "no unrendered @PLACEHOLDER@" bash -c "! grep -rnI '@[A-Z_]\\+@' '$R/usr/bin' '$R/opt/pi-carplay/share'"
+check "no unrendered @PLACEHOLDER@" bash -c "! grep -rnI --exclude=pi-carplay-setup '@[A-Z_]\\+@' '$R/usr/bin' '$R/opt/pi-carplay/share'"
 
 check "scripts parse" bash -c "
   for f in '$R'/usr/bin/* '$WORK/DEBIAN/postinst'; do

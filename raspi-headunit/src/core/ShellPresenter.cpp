@@ -293,6 +293,14 @@ void ShellPresenter::saveSettings() {
     emit changed();
 }
 
+void ShellPresenter::setCarMode(bool on) {
+    carMode_ = on;
+    if (on) {
+        openAndroidAuto();  // the phone is paired over BT; kick projection
+    }
+    emit changed();
+}
+
 void ShellPresenter::openAndroidAuto() {
     if (resumeCommand_.isEmpty()) {
         return;

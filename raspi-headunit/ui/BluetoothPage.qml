@@ -28,6 +28,12 @@ Item {
                 Layout.preferredWidth: 32
                 Layout.preferredHeight: 32
             }
+            Item { Layout.fillWidth: true }
+            Label { text: "Car mode"; color: "#f4f6f2"; font.pixelSize: 14 }
+            Switch {
+                checked: shell.carMode
+                onToggled: shell.setCarMode(checked)
+            }
         }
 
         Label {

@@ -74,6 +74,7 @@ Over-the-air updates will build on these releases: a signed manifest per release
 | `/usr/bin/pi-carplay-wireless-check` | Readiness check for wireless Android Auto (read-only) |
 | `/usr/bin/pi-carplay-wireless-setup` | Firmware, phone adapter and 5 GHz hotspot profile for wireless Android Auto (never starts it) |
 | `/usr/bin/pi-carplay-update` | `check` asks GitHub Releases whether a newer package exists. Read-only for now; see [ota.md](plans/0002-ota-updates.md) |
+| `/usr/bin/pi-carplay-touch-calibrate` | Calibrate the resistive touch panel: tap five crosses, writes a libinput-matrix udev rule |
 | `/lib/udev/rules.d/51-android-accessory.rules` | Accessory-mode USB access for the desktop user |
 
 Runtime dependencies are worked out at build time from the libraries the shipped binaries link directly, plus the QML modules, Qt Wayland, Qt Multimedia plugins, BlueZ and `pactl`.

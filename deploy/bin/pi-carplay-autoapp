@@ -8,6 +8,28 @@ mkdir -p "$CONF_DIR"
 [ -f "$CONF_DIR/openauto.ini" ] || cp "@DEFAULT_INI@" "$CONF_DIR/openauto.ini"
 cd "$CONF_DIR"
 
+# Make Android Auto projection follow the active display profile, so it adapts
+# to whatever panel is connected instead of a hardcoded resolution/DPI/margins.
+PROFILE_DIR="${PI_CARPLAY_PROFILE_DIR:-$HOME/.config/pi-carplay/profiles}"
+PROFILE=$(cat "$HOME/.config/pi-carplay/display-profile" 2>/dev/null || true)
+if [ -n "$PROFILE" ]; then
+	ENVF="$PROFILE_DIR/$PROFILE.env"
+	[ -f "$ENVF" ] || ENVF="/usr/share/pi-carplay/profiles/$PROFILE.env"
+	if [ -f "$ENVF" ]; then
+		set_ini() {  # key value: replace key in [Video] if value is non-empty
+			[ -n "$2" ] || return 0
+			if grep -q "^$1=" openauto.ini; then
+				sed -i "s/^$1=.*/$1=$2/" openauto.ini
+			fi
+			return 0  # never trip set -e when a key is absent
+		}
+		set_ini Resolution "$(sed -n 's/^AA_RES=//p' "$ENVF")"
+		set_ini ScreenDPI "$(sed -n 's/^AA_DPI=//p' "$ENVF")"
+		set_ini MarginWidth "$(sed -n 's/^AA_MARGIN_W=//p' "$ENVF")"
+		set_ini MarginHeight "$(sed -n 's/^AA_MARGIN_H=//p' "$ENVF")"
+	fi
+fi
+
 # The head-unit shell is the home screen; hide OpenAuto's own launcher window.
 export OPENAUTO_NO_MAIN_WINDOW="${OPENAUTO_NO_MAIN_WINDOW:-1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"

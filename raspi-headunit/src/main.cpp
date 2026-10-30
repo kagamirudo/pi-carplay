@@ -1,4 +1,5 @@
 #include "bluetooth/BluetoothDevices.hpp"
+#include "connection/WifiDevices.hpp"
 #include "core/ApplicationManager.hpp"
 #include "core/ConfigurationManager.hpp"
 #include "core/Log.hpp"
@@ -99,10 +100,12 @@ int main(int argc, char* argv[]) {
     }
 
     headunit::BluetoothDevices bluetooth(!qEnvironmentVariableIsSet("HEADUNIT_NO_BLUETOOTH"));
+    headunit::WifiDevices wifi(!qEnvironmentVariableIsSet("HEADUNIT_NO_WIFI"));
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("shell"), &presenter);
     engine.rootContext()->setContextProperty(QStringLiteral("bluetooth"), &bluetooth);
+    engine.rootContext()->setContextProperty(QStringLiteral("wifi"), &wifi);
 
     bool failed = false;
     QObject::connect(

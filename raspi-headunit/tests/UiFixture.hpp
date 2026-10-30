@@ -77,6 +77,62 @@ private:
     QString status_ = QStringLiteral("Tap Scan");
 };
 
+// Same QML surface as WifiDevices, without nmcli.
+class FakeWifi : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList networks READ networks NOTIFY networksChanged)
+    Q_PROPERTY(bool scanning READ scanning NOTIFY stateChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
+    Q_PROPERTY(bool hotspotActive READ hotspotActive NOTIFY stateChanged)
+    Q_PROPERTY(QString status READ status NOTIFY stateChanged)
+
+public:
+    QVariantList networks() const { return networks_; }
+    bool scanning() const { return scanning_; }
+    bool busy() const { return busy_; }
+    bool hotspotActive() const { return hotspotActive_; }
+    QString status() const { return status_; }
+
+    void setNetworks(QVariantList n) {
+        networks_ = std::move(n);
+        emit networksChanged();
+    }
+    static QVariantMap network(const QString& ssid, int signal, const QString& security, bool active, bool known) {
+        return {{QStringLiteral("ssid"), ssid},
+                {QStringLiteral("signal"), signal},
+                {QStringLiteral("security"), security},
+                {QStringLiteral("active"), active},
+                {QStringLiteral("known"), known}};
+    }
+
+    QStringList calls;
+
+    Q_INVOKABLE void refresh() { calls << QStringLiteral("refresh"); }
+    Q_INVOKABLE void scan() {
+        calls << QStringLiteral("scan");
+        scanning_ = !scanning_;
+        emit stateChanged();
+    }
+    Q_INVOKABLE void connectNetwork(const QString& ssid) { calls << QStringLiteral("connect ") + ssid; }
+    Q_INVOKABLE void forgetNetwork(const QString& ssid) { calls << QStringLiteral("forget ") + ssid; }
+    Q_INVOKABLE void setHotspot(bool on) {
+        hotspotActive_ = on;
+        calls << (on ? QStringLiteral("hotspot on") : QStringLiteral("hotspot off"));
+        emit stateChanged();
+    }
+
+signals:
+    void networksChanged();
+    void stateChanged();
+
+private:
+    QVariantList networks_;
+    bool scanning_ = false;
+    bool busy_ = false;
+    bool hotspotActive_ = false;
+    QString status_ = QStringLiteral("Tap Scan");
+};
+
 // The shell UI loaded from ui/ with the real presenter and a fake Bluetooth
 // backend. Every QML warning is collected; tests fail on any.
 class UiFixture {
@@ -92,6 +148,7 @@ public:
         });
         engine_.rootContext()->setContextProperty(QStringLiteral("shell"), &shell_);
         engine_.rootContext()->setContextProperty(QStringLiteral("bluetooth"), &bluetooth);
+        engine_.rootContext()->setContextProperty(QStringLiteral("wifi"), &wifi);
         engine_.load(QUrl::fromLocalFile(QStringLiteral(HEADUNIT_SOURCE_DIR "/ui/Main.qml")));
     }
 
@@ -174,9 +231,39 @@ public:
         return true;
     }
 
-    bool showPage(const QString& label) { return tap(button(label)); }
+    QQuickItem* findByName(const QString& name) const {
+        for (QQuickItem* item : items()) {
+            if (item->objectName() == name) {
+                return item;
+            }
+        }
+        return nullptr;
+    }
+
+    QString currentPage() const {
+        QQuickItem* nav = findByName(QStringLiteral("nav"));
+        return nav ? nav->property("currentText").toString() : QString();
+    }
+
+    // Navigate via the dropdown page selector: set the StackLayout index.
+    bool showPage(const QString& label) {
+        QQuickItem* stack = findByName(QStringLiteral("stack"));
+        if (!window() || !stack) {
+            return false;
+        }
+        // Navigate by the full page list so a page is reachable even when car
+        // mode hides its tab from the dropdown.
+        const int idx = window()->property("allPages").toStringList().indexOf(label);
+        if (idx < 0) {
+            return false;
+        }
+        stack->setProperty("currentIndex", idx);
+        QCoreApplication::processEvents();
+        return true;
+    }
 
     FakeBluetooth bluetooth;
+    FakeWifi wifi;
     QStringList warnings;
 
 private:

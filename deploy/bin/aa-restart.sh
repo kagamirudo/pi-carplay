@@ -1,11 +1,10 @@
 #!/bin/bash
-# Restart the head-unit panel and Android Auto on the running labwc session,
-# then re-plug the phone over USB so a fresh session starts.
+# Reconnect the phone and reopen Android Auto: restart autoapp and re-plug the
+# phone over USB so a fresh session starts. The head-unit shell is left running.
 #
 # Run as the desktop user. sudo is used only to reset the USB port.
 set -u
 
-HEADUNIT=@HEADUNIT@
 AUTOAPP_LAUNCHER=@AUTOAPP_LAUNCHER@
 SUPERVISE=@SUPERVISE@
 
@@ -15,14 +14,10 @@ export QT_QPA_PLATFORM=wayland
 export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 
 "$SUPERVISE" --stop autoapp
-"$SUPERVISE" --stop headunit
 # Copies started by hand or by an older autostart.
 pkill -u "$(id -u)" -x autoapp
-pkill -u "$(id -u)" -x headunit
 sleep 0.5
 
-setsid -f "$SUPERVISE" headunit "$HEADUNIT" < /dev/null > /dev/null 2>&1
-sleep 3
 setsid -f "$SUPERVISE" autoapp "$AUTOAPP_LAUNCHER" < /dev/null > /dev/null 2>&1
 sleep 2
 

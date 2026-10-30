@@ -36,6 +36,7 @@ class ShellPresenter : public QObject {
     Q_PROPERTY(QString displaySummary READ displaySummary NOTIFY changed)
     Q_PROPERTY(QString touchSummary READ touchSummary NOTIFY changed)
     Q_PROPERTY(QString saveResult READ saveResult NOTIFY changed)
+    Q_PROPERTY(bool carMode READ carMode NOTIFY changed)
     Q_PROPERTY(bool previewOpen READ previewOpen NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
 
@@ -67,6 +68,7 @@ public:
     QString displaySummary() const { return displaySummary_; }
     QString touchSummary() const { return touchSummary_; }
     QString saveResult() const { return saveResult_; }
+    bool carMode() const { return carMode_; }
     bool previewOpen() const { return previewOpen_; }
     QString version() const;
 
@@ -79,6 +81,8 @@ public:
     Q_INVOKABLE void requestRecord();
     Q_INVOKABLE void togglePreview();
     Q_INVOKABLE void openAndroidAuto();
+    Q_INVOKABLE void setCarMode(bool on);
+    Q_INVOKABLE void reconnectPhone();
 
     // Program and arguments run by openAndroidAuto(). Defaults to signalling autoapp.
     void setResumeCommand(QStringList command);
@@ -120,6 +124,7 @@ private:
     QString displaySummary_;
     QString touchSummary_;
     QString saveResult_ = "Not saved yet";
+    bool carMode_ = false;
     bool previewOpen_ = false;
     // OpenAuto shows its projection window again on SIGUSR1.
     QStringList resumeCommand_{QStringLiteral("pkill"), QStringLiteral("-USR1"), QStringLiteral("-x"),

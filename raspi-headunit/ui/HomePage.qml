@@ -20,6 +20,12 @@ Flickable {
             onClicked: shell.openAndroidAuto()
         }
 
+        ActionButton {
+            width: parent.width
+            text: "Reconnect phone"
+            onClicked: shell.reconnectPhone()
+        }
+
         Rectangle {
             width: parent.width
             height: phoneCol.height + 12

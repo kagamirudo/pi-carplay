@@ -62,6 +62,8 @@ add_library(headunit_shell STATIC
     src/bluetooth/BluetoothAgent.hpp
     src/bluetooth/DeviceList.cpp
     src/bluetooth/DeviceList.hpp
+    src/connection/WifiDevices.cpp
+    src/connection/WifiDevices.hpp
 )
 target_link_libraries(headunit_shell PUBLIC Qt6::Core Qt6::DBus headunit_core)
 target_compile_definitions(headunit_shell PUBLIC HEADUNIT_VERSION="${PROJECT_VERSION}")
@@ -73,6 +75,7 @@ set(HEADUNIT_QML_FILES
     ui/DashcamPage.qml
     ui/SettingsPage.qml
     ui/BluetoothPage.qml
+    ui/WifiPage.qml
     ui/ActionButton.qml
 )
 

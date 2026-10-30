@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Dashcam:** `pi-carplay-dashcam` records Camera Module 3 to the SD footage volume as one-minute MP4s, drops the oldest finished clip to stay under the byte budget, and shows a Qt preview on the Cam tab when the Wayland session is up. The systemd unit is installed by `make install` and is not enabled by the package.
+- **Display profiles:** `pi-carplay-display-profile` keeps the Dell HDMI profile until `use elecrow-7` is run for the 1024×600 panel. `pi-carplay-align-display` reads the active profile.
+- **Elecrow housing:** `hardware/elecrow-7/housing.py` builds the bezel, rear shell, camera bracket and fit gauge for the 7-inch module and a Pi 5.
 - **Crash recovery:** `pi-carplay-supervise` runs the shell and Android Auto, restarts either one if it exits (back-off from 1 s to 30 s), records each crash in `~/.local/state/pi-carplay/crashes.log`, and rotates the logs. Autostart and `pi-carplay-restart` use it.
 - **`pi-carplay-selftest`** (and `make selftest`): on-device check of power, temperature, display, touch, Bluetooth, audio, udev rule, autostart and recent crashes.
 - **Wireless Android Auto preparation** ([docs/wireless.md](docs/wireless.md)):

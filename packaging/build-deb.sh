@@ -59,8 +59,14 @@ done
 render "$REPO/deploy/bin/pi-carplay-autoapp" > "$STAGE/usr/bin/pi-carplay-autoapp"
 render "$REPO/deploy/bin/aa-restart.sh" > "$STAGE/usr/bin/pi-carplay-restart"
 install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-carplay-supervise" \
-  "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/tools/pi-carplay-selftest" \
+  "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/deploy/bin/pi-carplay-dashcam" \
+  "$REPO/deploy/bin/pi-carplay-align-display" "$REPO/deploy/bin/pi-carplay-display-profile" \
+  "$REPO/tools/pi-carplay-selftest" \
   "$REPO/tools/pi-carplay-wireless-check" "$REPO/tools/pi-carplay-update" "$STAGE/usr/bin/"
+install -d "$STAGE/usr/share/pi-carplay/profiles"
+install -m 0644 "$REPO/deploy/display/profiles/"*.env "$STAGE/usr/share/pi-carplay/profiles/"
+install -m 0644 "$REPO/deploy/display/elecrow-1024x600.bin" \
+  "$REPO/deploy/systemd/pi-carplay-dashcam.service" "$STAGE/usr/share/pi-carplay/"
 install -m 0755 "$REPO/packaging/pi-carplay-setup" "$STAGE/usr/bin/"
 chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restart"
 

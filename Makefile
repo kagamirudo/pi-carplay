@@ -40,10 +40,15 @@ RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
 	-e 's|@AUTOAPP_LAUNCHER@|$(BIN_DIR)/pi-carplay-autoapp|g' \
 	-e 's|@AUTOAPP@|$(OPENAUTO_BIN)/autoapp|g' \
 	-e 's|@OPENAUTO_DIR@|$(OPENAUTO_BIN)|g' \
-	-e 's|@DEFAULT_INI@|$(REPO)/deploy/openauto/openauto.ini|g'
+	-e 's|@DEFAULT_INI@|$(REPO)/deploy/openauto/openauto.ini|g' \
+	-e 's|@USER@|$(shell id -un)|g' \
+	-e 's|@UID@|$(shell id -u)|g' \
+	-e 's|@BIN_DIR@|$(BIN_DIR)|g'
 
 SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
-	deploy/bin/pi-carplay-supervise deploy/bin/pi-carplay-wireless-setup packaging/pi-carplay-setup \
+	deploy/bin/pi-carplay-supervise deploy/bin/pi-carplay-wireless-setup \
+	deploy/bin/pi-carplay-dashcam deploy/bin/pi-carplay-align-display deploy/bin/pi-carplay-display-profile \
+	packaging/pi-carplay-setup \
 	packaging/postinst packaging/build-deb.sh packaging/test-deb.sh raspi-headunit/tests/smoke.sh \
 	tools/pi-carplay-selftest tools/pi-carplay-wireless-check tools/pi-carplay-update
 
@@ -221,12 +226,19 @@ install-openauto-config: ## OpenAuto settings (kept if one already exists)
 	cp -n $(REPO)/deploy/openauto/openauto.ini $(OPENAUTO_BIN)/openauto.ini
 
 .PHONY: install-scripts
-install-scripts: ## Install aa-restart.sh, the autoapp launcher and the supervisor to ~/.local/bin
-	mkdir -p $(BIN_DIR)
+install-scripts: ## Install launchers, the dashcam and the display-profile switcher
+	mkdir -p $(BIN_DIR) $(HOME)/.config/pi-carplay/profiles $(HOME)/.local/share/pi-carplay
 	for f in aa-restart.sh pi-carplay-autoapp pi-carplay-supervise; do \
 		$(RENDER) $(REPO)/deploy/bin/$$f > $(BIN_DIR)/$$f; \
 		chmod 0755 $(BIN_DIR)/$$f; \
 	done
+	install -m 0755 $(REPO)/deploy/bin/pi-carplay-dashcam $(REPO)/deploy/bin/pi-carplay-align-display \
+		$(REPO)/deploy/bin/pi-carplay-display-profile $(BIN_DIR)/
+	install -m 0644 $(REPO)/deploy/display/profiles/*.env $(HOME)/.config/pi-carplay/profiles/
+	install -m 0644 $(REPO)/deploy/display/elecrow-1024x600.bin $(HOME)/.local/share/pi-carplay/
+	$(RENDER) $(REPO)/deploy/systemd/pi-carplay-dashcam.service > $(HOME)/.local/share/pi-carplay/pi-carplay-dashcam.service
+	sudo install -m 0644 $(HOME)/.local/share/pi-carplay/pi-carplay-dashcam.service /etc/systemd/system/pi-carplay-dashcam.service
+	sudo systemctl daemon-reload
 
 .PHONY: boot-config
 boot-config: ## Add the SPI display overlay to config.txt (sudo, needs a reboot)

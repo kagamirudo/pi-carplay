@@ -1,0 +1,27 @@
+# System unit for the SD-card dashcam. `make install` fills in the desktop
+# user and the Wayland socket. Recording starts at boot. The Qt preview
+# appears once wayland-0 exists; until then the service records with no window.
+
+[Unit]
+Description=CarPlay dashcam onto the SD footage card
+After=mnt-dashcam.mount
+RequiresMountsFor=/mnt/dashcam
+ConditionPathIsMountPoint=/mnt/dashcam
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+SupplementaryGroups=video render input
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=QT_QPA_PLATFORM=wayland
+Environment=QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+ExecStart=@BIN_DIR@/pi-carplay-dashcam
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Wireless speed:** `pi-carplay-hotspot` runs the Android Auto access point at 80 MHz with power save off. A USB dongle is used first; if the phone stays under 100 Mbit/s the same network moves onto the Pi's own radio.
 - **Dashcam:** `pi-carplay-dashcam` records Camera Module 3 to the SD footage volume as one-minute MP4s and drops the oldest finished clip to stay under the byte budget. The Cam tab has a Preview button. Close preview, or the preview window, leaves recording running and the picture stays off until Preview is pressed again. The systemd unit is installed by `make install` and is not enabled by the package.
 - **Display profiles:** `pi-carplay-display-profile` keeps the Dell HDMI profile until `use elecrow-7` is run for the 1024×600 panel. `pi-carplay-align-display` reads the active profile.
 - **Elecrow housing:** `hardware/elecrow-7/housing.py` builds the bezel, rear shell, camera bracket and fit gauge for the 7-inch module and a Pi 5.

@@ -61,6 +61,7 @@ render "$REPO/deploy/bin/aa-restart.sh" > "$STAGE/usr/bin/pi-carplay-restart"
 install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-carplay-supervise" \
   "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/deploy/bin/pi-carplay-dashcam" \
   "$REPO/deploy/bin/pi-carplay-align-display" "$REPO/deploy/bin/pi-carplay-display-profile" \
+  "$REPO/deploy/bin/pi-carplay-hotspot" \
   "$REPO/tools/pi-carplay-selftest" \
   "$REPO/tools/pi-carplay-wireless-check" "$REPO/tools/pi-carplay-update" "$STAGE/usr/bin/"
 install -d "$STAGE/usr/share/pi-carplay/profiles"

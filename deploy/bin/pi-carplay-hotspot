@@ -1,0 +1,314 @@
+#!/bin/bash
+# Android Auto hotspot.
+#
+# The phone joins this access point after Bluetooth. A 20 MHz pipe makes the
+# first screen take a long time, so the access point is 80 MHz when the radio
+# allows it, with power save off.
+#
+# A USB Wi-Fi dongle is tried first. If a joined phone stays under 100 Mbit/s,
+# the same network is moved onto the Pi's own radio.
+#
+# Credentials stay in the NetworkManager profile pi-carplay-aa. This does not
+# print the passphrase.
+set -euo pipefail
+
+KEYFILE=${KEYFILE:-/etc/NetworkManager/system-connections/pi-carplay-aa.nmconnection}
+CONNECTION=${CONNECTION:-pi-carplay-aa}
+RUN=${RUN:-/run/pi-carplay}
+# sudo replaces HOME, so keep logs on the desktop account when we were asked to.
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != root ]]; then
+  STATE=${STATE:-/home/${SUDO_USER}/.local/state/pi-carplay}
+else
+  STATE=${STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-carplay}
+fi
+SLOW_MBIT=${SLOW_MBIT:-100}
+SLOW_HITS=${SLOW_HITS:-3}
+
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$STATE/hotspot.log" >&2; }
+
+need_root() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    exec sudo -- "$0" "$@"
+  fi
+}
+
+read_profile() {
+  [[ -f "$KEYFILE" ]] || { log "missing $KEYFILE"; exit 1; }
+  local file
+  file=$(cat "$KEYFILE")
+  SSID=$(printf '%s\n' "$file" | sed -n 's/^ssid=//p' | head -n 1)
+  PSK=$(printf '%s\n' "$file" | sed -n 's/^psk=//p' | head -n 1)
+  CHANNEL=$(printf '%s\n' "$file" | sed -n 's/^channel=//p' | head -n 1)
+  ADDRESS=$(printf '%s\n' "$file" | sed -n 's/^address1=//p' | head -n 1 | cut -d/ -f1)
+  [[ -n "$SSID" && -n "$PSK" && -n "$CHANNEL" && -n "$ADDRESS" ]] || {
+    log "hotspot profile is incomplete"
+    exit 1
+  }
+}
+
+country_code() {
+  local code
+  code=$(iw reg get 2>/dev/null | awk '/^country / {print $2; exit}' | cut -d: -f1)
+  if [[ "$code" =~ ^[A-Z]{2}$ ]]; then
+    printf '%s\n' "$code"
+  else
+    printf 'VN\n'
+  fi
+}
+
+driver_of() {
+  local link="/sys/class/net/$1/device/driver"
+  if [[ -L "$link" ]]; then
+    basename "$(readlink -f "$link")"
+  fi
+}
+
+radios() {
+  local name driver
+  for name in /sys/class/net/wlan*; do
+    [[ -e "$name" ]] || continue
+    name=$(basename "$name")
+    [[ "$name" == p2p-dev-* ]] && continue
+    driver=$(driver_of "$name")
+    [[ -n "$driver" ]] || continue
+    printf '%s %s\n' "$name" "$driver"
+  done
+}
+
+pi_radio() {
+  radios | awk '$2 == "brcmfmac" {print $1; exit}'
+}
+
+dongle_radio() {
+  radios | awk '$2 != "brcmfmac" {print $1; exit}'
+}
+
+width_args() {
+  # channel -> "80 <center index>" or "40" or "20"
+  case "$1" in
+    36|40|44|48) printf '80 42\n' ;;
+    149|153|157|161) printf '80 155\n' ;;
+    *) printf '20 0\n' ;;
+  esac
+}
+
+write_hostapd() {
+  local iface=$1 width=$2 center=$3 country tmp
+  country=$(country_code)
+  tmp=$(mktemp)
+  {
+    cat <<EOF
+interface=$iface
+driver=nl80211
+ssid=$SSID
+country_code=$country
+ieee80211d=1
+hw_mode=a
+channel=$CHANNEL
+wmm_enabled=1
+macaddr_acl=0
+auth_algs=1
+ignore_broadcast_ssid=0
+wpa=2
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
+disassoc_low_ack=0
+uapsd_advertisement_enabled=0
+EOF
+    printf 'wpa_passphrase=%s\n' "$PSK"
+    if [[ "$width" == 80 ]]; then
+      cat <<EOF
+ieee80211n=1
+ieee80211ac=1
+ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40]
+vht_capab=[SHORT-GI-80]
+vht_oper_chwidth=1
+vht_oper_centr_freq_seg0_idx=$center
+EOF
+    elif [[ "$width" == 40 ]]; then
+      cat <<EOF
+ieee80211n=1
+ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40]
+EOF
+    fi
+  } > "$tmp"
+  install -m 0600 "$tmp" "$RUN/hostapd.conf"
+  rm -f "$tmp"
+}
+
+stop_servers() {
+  if [[ -f "$RUN/hostapd.pid" ]]; then
+    kill "$(cat "$RUN/hostapd.pid")" 2>/dev/null || true
+    rm -f "$RUN/hostapd.pid"
+  fi
+  if [[ -f "$RUN/dnsmasq.pid" ]]; then
+    kill "$(cat "$RUN/dnsmasq.pid")" 2>/dev/null || true
+    rm -f "$RUN/dnsmasq.pid"
+  fi
+  pkill -x hostapd 2>/dev/null || true
+  # Only the hotspot dnsmasq, started with our pid file. A system dnsmasq is left alone
+  # because it was not given this pid file.
+}
+
+release_iface() {
+  local iface=$1
+  ip addr flush dev "$iface" 2>/dev/null || true
+  ip link set "$iface" down 2>/dev/null || true
+  nmcli device set "$iface" managed yes 2>/dev/null || true
+}
+
+stop_ap() {
+  stop_servers
+  if [[ -f "$RUN/iface" ]]; then
+    release_iface "$(cat "$RUN/iface")"
+    rm -f "$RUN/iface"
+  fi
+  nmcli connection down "$CONNECTION" >/dev/null 2>&1 || true
+}
+
+start_nm() {
+  local iface=$1
+  log "NetworkManager access point on $iface (power save off)"
+  nmcli device set "$iface" managed yes 2>/dev/null || true
+  sleep 0.4
+  nmcli connection modify "$CONNECTION" connection.interface-name "$iface" 802-11-wireless.powersave 2 \
+    ipv6.method disabled >/dev/null
+  nmcli connection up "$CONNECTION" ifname "$iface"
+  iw dev "$iface" set power_save off 2>/dev/null || true
+  printf '%s\n' "$iface" > "$RUN/iface"
+  echo nm > "$RUN/backend"
+  echo 0 > "$RUN/slow-count"
+}
+
+start_ap() {
+  local iface=$1 width center
+  read -r width center < <(width_args "$CHANNEL")
+  # This Pi's onboard radio rejects 40 and 80 MHz access-point channels
+  # (nl80211 -95). Remember that and keep NetworkManager's 20 MHz AP, which
+  # does come up. A USB dongle is still allowed to try a wider channel once.
+  if [[ -f "$STATE/wide-unsupported-$iface" ]]; then
+    log "keeping NetworkManager on $iface; a wider channel is not supported there"
+    start_nm "$iface"
+    return 0
+  fi
+  log "starting $SSID on $iface ($(driver_of "$iface")) channel $CHANNEL width $width"
+  nmcli connection down "$CONNECTION" >/dev/null 2>&1 || true
+  nmcli device set "$iface" managed no
+  ip link set "$iface" down || true
+  ip addr flush dev "$iface" || true
+  ip link set "$iface" up
+  ip addr add "$ADDRESS/24" dev "$iface"
+  iw dev "$iface" set power_save off 2>/dev/null || true
+  write_hostapd "$iface" "$width" "$center"
+  if ! hostapd -B -P "$RUN/hostapd.pid" -f "$STATE/hostapd.log" "$RUN/hostapd.conf"; then
+    log "hostapd refused ${width} MHz on $iface"
+    printf '%s\n' "$iface" > "$STATE/wide-unsupported-$iface"
+    start_nm "$iface"
+    return 0
+  fi
+  sleep 0.4
+  if ! iw dev "$iface" info | grep -q "width: ${width} MHz"; then
+    log "$iface stayed narrow; leaving the NetworkManager access point in place"
+    stop_servers
+    printf '%s\n' "$iface" > "$STATE/wide-unsupported-$iface"
+    start_nm "$iface"
+    return 0
+  fi
+
+  cat > "$RUN/dnsmasq.conf" <<EOF
+interface=$iface
+bind-interfaces
+except-interface=lo
+port=0
+dhcp-authoritative
+dhcp-range=${ADDRESS%.*}.10,${ADDRESS%.*}.100,255.255.255.0,12h
+dhcp-option=3,$ADDRESS
+EOF
+  dnsmasq --conf-file="$RUN/dnsmasq.conf" --pid-file="$RUN/dnsmasq.pid" \
+    --dhcp-leasefile="$RUN/leases" --log-facility="$STATE/dnsmasq.log"
+  printf '%s\n' "$iface" > "$RUN/iface"
+  echo hostapd > "$RUN/backend"
+  echo 0 > "$RUN/slow-count"
+  iw dev "$iface" info | tee -a "$STATE/hotspot.log" >&2 || true
+}
+
+bring_up() {
+  local dongle pi
+  mkdir -p "$RUN" "$STATE"
+  read_profile
+  stop_ap
+  dongle=$(dongle_radio || true)
+  pi=$(pi_radio || true)
+  if [[ -n "$dongle" ]]; then
+    start_ap "$dongle" && return 0
+  fi
+  if [[ -n "$pi" ]]; then
+    start_ap "$pi"
+    return 0
+  fi
+  log "no Wi-Fi radio"
+  exit 1
+}
+
+station_mbit() {
+  local iface=$1 rate
+  rate=$(iw dev "$iface" station dump 2>/dev/null | awk '/tx bitrate:/ {print int($3); exit}')
+  printf '%s\n' "${rate:-0}"
+}
+
+check_link() {
+  local iface driver rate hits pi
+  [[ -f "$RUN/iface" ]] || return 0
+  iface=$(cat "$RUN/iface")
+  driver=$(driver_of "$iface")
+  [[ "$driver" == brcmfmac ]] && return 0
+  pi=$(pi_radio || true)
+  [[ -n "$pi" ]] || return 0
+  rate=$(station_mbit "$iface")
+  if [[ "$rate" -eq 0 ]]; then
+    echo 0 > "$RUN/slow-count"
+    return 0
+  fi
+  hits=$(cat "$RUN/slow-count" 2>/dev/null || echo 0)
+  if [[ "$rate" -lt "$SLOW_MBIT" ]]; then
+    hits=$((hits + 1))
+    log "$iface tx ${rate} Mbit/s (${hits}/${SLOW_HITS})"
+  else
+    hits=0
+  fi
+  echo "$hits" > "$RUN/slow-count"
+  if [[ "$hits" -ge "$SLOW_HITS" ]]; then
+    log "dongle is below ${SLOW_MBIT} Mbit/s; moving $SSID onto $pi"
+    stop_ap
+    start_ap "$pi"
+  fi
+}
+
+watch() {
+  mkdir -p "$STATE"
+  while true; do
+    check_link || true
+    sleep 5
+  done
+}
+
+main() {
+  case "${1:-start}" in
+    start)
+      need_root "$@"
+      bring_up
+      if ! pgrep -f 'pi-carplay-hotspot watch' >/dev/null 2>&1; then
+        nohup "$0" watch >>"$STATE/hotspot.log" 2>&1 &
+      fi
+      ;;
+    stop)
+      need_root "$@"
+      stop_ap
+      ;;
+    check) need_root "$@"; check_link ;;
+    watch) need_root "$@"; watch ;;
+    *) echo "usage: pi-carplay-hotspot start|stop|check|watch" >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

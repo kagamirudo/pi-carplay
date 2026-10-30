@@ -47,6 +47,7 @@ usr/bin/pi-carplay-setup usr/bin/pi-carplay-autoapp usr/bin/pi-carplay-restart u
 usr/bin/pi-carplay-supervise usr/bin/pi-carplay-selftest usr/bin/pi-carplay-wireless-check
 usr/bin/pi-carplay-wireless-setup usr/bin/pi-carplay-update
 usr/bin/pi-carplay-dashcam usr/bin/pi-carplay-align-display usr/bin/pi-carplay-display-profile \
+usr/bin/pi-carplay-hotspot \
 usr/share/pi-carplay/elecrow-1024x600.bin usr/share/pi-carplay/pi-carplay-dashcam.service \
 usr/share/pi-carplay/profiles/dell-hdmi.env usr/share/pi-carplay/profiles/elecrow-7.env \
 usr/share/doc/pi-carplay/copyright"

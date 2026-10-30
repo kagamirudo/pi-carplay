@@ -48,6 +48,7 @@ RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
 SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
 	deploy/bin/pi-carplay-supervise deploy/bin/pi-carplay-wireless-setup \
 	deploy/bin/pi-carplay-dashcam deploy/bin/pi-carplay-align-display deploy/bin/pi-carplay-display-profile \
+	deploy/bin/pi-carplay-hotspot \
 	packaging/pi-carplay-setup \
 	packaging/postinst packaging/build-deb.sh packaging/test-deb.sh raspi-headunit/tests/smoke.sh \
 	tools/pi-carplay-selftest tools/pi-carplay-wireless-check tools/pi-carplay-update

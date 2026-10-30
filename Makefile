@@ -237,10 +237,14 @@ install-scripts: ## Install launchers, the dashcam and the display-profile switc
 	install -m 0644 $(REPO)/deploy/display/profiles/*.env $(HOME)/.config/pi-carplay/profiles/
 	install -m 0644 $(REPO)/deploy/display/elecrow-1024x600.bin $(HOME)/.local/share/pi-carplay/
 	$(RENDER) $(REPO)/deploy/systemd/pi-carplay-dashcam.service > $(HOME)/.local/share/pi-carplay/pi-carplay-dashcam.service
-	# The Bookworm CI container has no systemd. Install the unit only on a real boot.
-	if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then \
-		sudo install -m 0644 $(HOME)/.local/share/pi-carplay/pi-carplay-dashcam.service /etc/systemd/system/pi-carplay-dashcam.service; \
-		sudo systemctl daemon-reload; \
+	# A container with no manager prints no state. A degraded Pi still counts as booted.
+	if command -v systemctl >/dev/null 2>&1; then \
+		state=$$(SYSTEMD_COLORS=0 systemctl is-system-running 2>/dev/null || true); \
+		case "$$state" in \
+			running|degraded|starting|initializing|maintenance) \
+				sudo install -m 0644 $(HOME)/.local/share/pi-carplay/pi-carplay-dashcam.service /etc/systemd/system/pi-carplay-dashcam.service; \
+				sudo systemctl daemon-reload ;; \
+		esac; \
 	fi
 
 .PHONY: boot-config

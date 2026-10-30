@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   # Decide whether build-relevant files changed. On pull requests that touch only

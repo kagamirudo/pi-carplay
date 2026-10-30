@@ -88,6 +88,9 @@ QVariantList WifiDevices::parseNetworks(const QString& wifiList, const QStringLi
     return out;
 }
 
+// The nmcli/bash I/O methods below shell out to real tools, so they are not
+// unit-tested (the parsed logic above is). Excluded from coverage, like main.cpp.
+// GCOVR_EXCL_START
 WifiDevices::WifiDevices(bool enabled, QObject* parent) : QObject(parent), enabled_(enabled) {
     connect(&scanProcess_, &QProcess::finished, this, [this] {
         scanning_ = false;
@@ -208,4 +211,5 @@ void WifiDevices::setHotspot(bool on) {
     }
 }
 
+// GCOVR_EXCL_STOP
 }  // namespace headunit

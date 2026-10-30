@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMap>
 #include <QObject>
 #include <QProcess>
 #include <QString>
@@ -52,7 +53,7 @@ private:
     bool isKnown(const QString& ssid) const;
 
     QVariantList networks_;
-    QStringList known_;
+    QMap<QString, QString> knownBySsid_;  // SSID -> NetworkManager profile name
     QProcess scanProcess_;
     QProcess actionProcess_;
     bool enabled_ = true;

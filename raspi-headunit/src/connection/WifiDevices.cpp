@@ -133,18 +133,31 @@ void WifiDevices::setStatus(const QString& status) {
     emit stateChanged();
 }
 
-bool WifiDevices::isKnown(const QString& ssid) const { return known_.contains(ssid); }
+bool WifiDevices::isKnown(const QString& ssid) const { return knownBySsid_.contains(ssid); }
 
 void WifiDevices::refresh() {
     if (!enabled_) {
         return;
     }
-    known_ = parseKnownSsids(run({QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("NAME,TYPE"),
-                                  QStringLiteral("connection"), QStringLiteral("show")}));
+    // Resolve each saved Wi-Fi profile to its real SSID (a profile's name may
+    // differ from its SSID), so "known" is matched on SSID, not the name.
+    knownBySsid_.clear();
+    const QStringList profiles = parseKnownSsids(run({QStringLiteral("-t"), QStringLiteral("-f"),
+                                                      QStringLiteral("NAME,TYPE"), QStringLiteral("connection"),
+                                                      QStringLiteral("show")}));
+    for (const QString& name : profiles) {
+        QString ssid = run({QStringLiteral("-g"), QStringLiteral("802-11-wireless.ssid"),
+                            QStringLiteral("connection"), QStringLiteral("show"), QStringLiteral("id"), name})
+                           .trimmed();
+        if (ssid.isEmpty()) {
+            ssid = name;  // profiles created by SSID have name == ssid
+        }
+        knownBySsid_.insert(ssid, name);
+    }
     networks_ = parseNetworks(run({QStringLiteral("-t"), QStringLiteral("-f"),
                                    QStringLiteral("IN-USE,SIGNAL,SECURITY,SSID"), QStringLiteral("device"),
                                    QStringLiteral("wifi"), QStringLiteral("list")}),
-                              known_);
+                              QStringList(knownBySsid_.keys()));
     const QString active = run({QStringLiteral("-t"), QStringLiteral("-f"), QStringLiteral("NAME"),
                                 QStringLiteral("connection"), QStringLiteral("show"), QStringLiteral("--active")});
     hotspotActive_ = active.split('\n').contains(QLatin1String(kHotspot));
@@ -180,21 +193,21 @@ void WifiDevices::connectNetwork(const QString& ssid) {
         return;
     }
     if (!isKnown(ssid)) {
-        setStatus(QStringLiteral("%1 is not saved. Add it once with pi-carplay-wireless-setup (no keyboard here to "
-                                 "type its password).")
+        setStatus(QStringLiteral("%1 is not saved. Join it once over SSH "
+                                 "(nmcli device wifi connect \"%1\" password …); it then appears here.")
                       .arg(ssid));
         return;
     }
-    runAction(QStringLiteral("nmcli connection up ") + sq(ssid), QStringLiteral("Connecting to %1…").arg(ssid),
-              QStringLiteral("Connected to %1.").arg(ssid));
+    runAction(QStringLiteral("nmcli connection up ") + sq(knownBySsid_.value(ssid)),
+              QStringLiteral("Connecting to %1…").arg(ssid), QStringLiteral("Connected to %1.").arg(ssid));
 }
 
 void WifiDevices::forgetNetwork(const QString& ssid) {
-    if (!enabled_ || busy_ || ssid.isEmpty()) {
+    if (!enabled_ || busy_ || ssid.isEmpty() || !isKnown(ssid)) {
         return;
     }
-    runAction(QStringLiteral("nmcli connection delete ") + sq(ssid), QStringLiteral("Forgetting %1…").arg(ssid),
-              QStringLiteral("Forgot %1.").arg(ssid));
+    runAction(QStringLiteral("nmcli connection delete ") + sq(knownBySsid_.value(ssid)),
+              QStringLiteral("Forgetting %1…").arg(ssid), QStringLiteral("Forgot %1.").arg(ssid));
 }
 
 void WifiDevices::setHotspot(bool on) {

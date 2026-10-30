@@ -66,6 +66,21 @@ setup_share() {
   [ "$(cat "$WORK/home/.config/labwc/autostart.bak")" = mine ]
 }
 
+@test "setup renders the dashcam unit for the desktop user" {
+  [ "$(id -u)" -ne 0 ] || skip "refuses to run as root by design"
+  setup_share
+  printf 'User=@USER@\nXDG=/run/user/@UID@\nExec=@BIN_DIR@/pi-carplay-dashcam\n' \
+    > "$WORK/dashcam.service"
+  HOME="$WORK/home" PI_CARPLAY_SHARE="$WORK/share" PI_CARPLAY_UNIT="$WORK/dashcam.service" \
+    run "$REPO/packaging/pi-carplay-setup"
+  [ "$status" -eq 0 ]
+  rendered="$WORK/home/.local/share/pi-carplay/pi-carplay-dashcam.service"
+  grep -qx "User=$(id -un)" "$rendered"
+  grep -qx "XDG=/run/user/$(id -u)" "$rendered"
+  grep -qx "Exec=/usr/bin/pi-carplay-dashcam" "$rendered"
+  ! grep -q '@' "$rendered"
+}
+
 @test "setup --boot runs the boot config step" {
   [ "$(id -u)" -ne 0 ] || skip "refuses to run as root by design"
   setup_share

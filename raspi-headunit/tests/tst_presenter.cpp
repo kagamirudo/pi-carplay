@@ -94,6 +94,31 @@ private slots:
         QVERIFY(shell.saveResult().startsWith(QStringLiteral("could not")));
     }
 
+    void previewToggleWritesTheFlag() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const QByteArray oldHome = qgetenv("HOME");
+        qputenv("HOME", home.path().toUtf8());
+        struct RestoreHome {
+            QByteArray old;
+            ~RestoreHome() { qputenv("HOME", old); }
+        } restore{oldHome};
+
+        ApplicationManager app(AppConfig::defaults());
+        ShellPresenter shell(app, savePath());
+        QCOMPARE(shell.previewOpen(), false);
+        shell.togglePreview();
+        QCOMPARE(shell.previewOpen(), true);
+        QFile flag(home.filePath(QStringLiteral(".local/state/pi-carplay/dashcam-preview")));
+        QVERIFY(flag.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(flag.readAll()).trimmed(), QStringLiteral("on"));
+        flag.close();
+        shell.togglePreview();
+        QCOMPARE(shell.previewOpen(), false);
+        QVERIFY(flag.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(flag.readAll()).trimmed(), QStringLiteral("off"));
+    }
+
     void recordWithoutDiskExplainsWhy() {
         ApplicationManager app(AppConfig::defaults());
         ShellPresenter shell(app, savePath());

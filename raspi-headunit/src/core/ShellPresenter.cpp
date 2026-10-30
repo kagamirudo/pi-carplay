@@ -7,8 +7,11 @@
 #include <QTimer>
 
 #include <array>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <string>
+#include <system_error>
 #include <vector>
 
 namespace headunit {
@@ -174,6 +177,36 @@ void ShellPresenter::refresh() {
     homePhone_ = linkDetail_;
     homeCamera_ = recordState_.toUpper() + QStringLiteral(" · ") + recordDetail_;
     homeDisplay_ = displaySummary_;
+    previewOpen_ = readPreviewFlag();
+    emit changed();
+}
+
+std::filesystem::path ShellPresenter::previewFlagPath() const {
+    if (const char* home = std::getenv("HOME")) {
+        return std::filesystem::path(home) / ".local/state/pi-carplay/dashcam-preview";
+    }
+    return "/tmp/pi-carplay-dashcam-preview";
+}
+
+bool ShellPresenter::readPreviewFlag() const {
+    std::ifstream in(previewFlagPath());
+    std::string word;
+    in >> word;
+    return word == "on";
+}
+
+void ShellPresenter::togglePreview() {
+    const bool next = !previewOpen_;
+    const auto path = previewFlagPath();
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        Logger::warn("dashcam", "could not write the preview flag");
+        return;
+    }
+    out << (next ? "on\n" : "off\n");
+    previewOpen_ = next;
     emit changed();
 }
 

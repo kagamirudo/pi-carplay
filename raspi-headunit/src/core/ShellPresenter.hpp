@@ -36,6 +36,7 @@ class ShellPresenter : public QObject {
     Q_PROPERTY(QString displaySummary READ displaySummary NOTIFY changed)
     Q_PROPERTY(QString touchSummary READ touchSummary NOTIFY changed)
     Q_PROPERTY(QString saveResult READ saveResult NOTIFY changed)
+    Q_PROPERTY(bool previewOpen READ previewOpen NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
@@ -66,6 +67,7 @@ public:
     QString displaySummary() const { return displaySummary_; }
     QString touchSummary() const { return touchSummary_; }
     QString saveResult() const { return saveResult_; }
+    bool previewOpen() const { return previewOpen_; }
     QString version() const;
 
     Q_INVOKABLE void lookForPhone();
@@ -75,6 +77,7 @@ public:
     Q_INVOKABLE void adjustStorageLimit(int deltaSteps);
     Q_INVOKABLE void saveSettings();
     Q_INVOKABLE void requestRecord();
+    Q_INVOKABLE void togglePreview();
     Q_INVOKABLE void openAndroidAuto();
 
     // Program and arguments run by openAndroidAuto(). Defaults to signalling autoapp.
@@ -87,6 +90,8 @@ signals:
 
 private:
     QString formatBytes(std::uint64_t bytes) const;
+    std::filesystem::path previewFlagPath() const;
+    bool readPreviewFlag() const;
 
     ApplicationManager& app_;
     std::filesystem::path savePath_;
@@ -115,6 +120,7 @@ private:
     QString displaySummary_;
     QString touchSummary_;
     QString saveResult_ = "Not saved yet";
+    bool previewOpen_ = false;
     // OpenAuto shows its projection window again on SIGUSR1.
     QStringList resumeCommand_{QStringLiteral("pkill"), QStringLiteral("-USR1"), QStringLiteral("-x"),
                                QStringLiteral("autoapp")};

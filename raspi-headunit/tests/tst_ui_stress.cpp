@@ -84,7 +84,7 @@ private slots:
         UiFixture ui;
         QVERIFY(QTest::qWaitForWindowExposed(ui.window()));
         const QStringList pages = {QStringLiteral("Home"), QStringLiteral("Phone"), QStringLiteral("Cam"),
-                                   QStringLiteral("BT"), QStringLiteral("Setup")};
+                                   QStringLiteral("Bluetooth"), QStringLiteral("Wi-Fi"), QStringLiteral("Setup")};
         for (int i = 0; i < 1000; ++i) {
             QVERIFY(ui.showPage(pages.at(i % pages.size())));
         }

@@ -195,7 +195,9 @@ coverage: ## Line and branch coverage; fails below COVERAGE_MIN percent of lines
 analyze: ## Static analysis: cppcheck and qmllint
 	cppcheck --enable=warning,performance,portability --std=c++20 --inline-suppr --error-exitcode=1 \
 		--quiet --suppress=missingIncludeSystem --library=qt -I $(HEADUNIT_DIR)/src $(HEADUNIT_DIR)/src
-	$(QMLLINT) --unqualified disable $(HEADUNIT_DIR)/ui/*.qml
+	# --import disable: Debian ships Qt5Compat.GraphicalEffects without its
+	# .qmltypes metadata, so qmllint warns on the (runtime-valid) import.
+	$(QMLLINT) --unqualified disable --import disable $(HEADUNIT_DIR)/ui/*.qml
 
 # ---------------------------------------------------------------- install
 

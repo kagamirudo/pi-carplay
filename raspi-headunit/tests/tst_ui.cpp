@@ -9,8 +9,8 @@ using headunit::test::UiFixture;
 
 namespace {
 
-const QStringList kPages = {QStringLiteral("Home"), QStringLiteral("Phone"), QStringLiteral("Cam"), QStringLiteral("BT"),
-                            QStringLiteral("Setup")};
+const QStringList kPages = {QStringLiteral("Home"), QStringLiteral("Phone"), QStringLiteral("Cam"),
+                            QStringLiteral("Bluetooth"), QStringLiteral("Wi-Fi"), QStringLiteral("Setup")};
 
 // Resistive touch on a 3.5" panel: anything smaller is hard to hit while driving.
 constexpr qreal kMinTouchTarget = 32;
@@ -54,9 +54,7 @@ private slots:
     void everyPageOpens() {
         QFETCH(QString, page);
         QVERIFY(ui_->showPage(page));
-        QQuickItem* tab = ui_->button(page);
-        QVERIFY(tab);
-        QVERIFY(tab->property("checked").toBool());
+        QCOMPARE(ui_->currentPage(), page);
         noWarnings();
     }
 
@@ -119,7 +117,7 @@ private slots:
                                   QStringLiteral("A speaker with a very very very long Bluetooth name that must elide"),
                                   false, false),
         });
-        QVERIFY(ui_->showPage(QStringLiteral("BT")));
+        QVERIFY(ui_->showPage(QStringLiteral("Bluetooth")));
         const auto count = [this](const QString& text) {
             int n = 0;
             for (QQuickItem* item : ui_->buttons()) {
@@ -140,7 +138,7 @@ private slots:
     }
 
     void bluetoothListSurvivesOddData() {
-        QVERIFY(ui_->showPage(QStringLiteral("BT")));
+        QVERIFY(ui_->showPage(QStringLiteral("Bluetooth")));
         QVariantMap missingFields;
         missingFields.insert(QStringLiteral("address"), QStringLiteral("00:00:00:00:00:09"));
         ui_->bluetooth.setDevices({missingFields, QVariantMap{},

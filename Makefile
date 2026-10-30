@@ -48,7 +48,7 @@ RENDER := sed -e 's|@HEADUNIT@|$(HEADUNIT_BIN)|g' \
 SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/bin/pi-carplay-boot-config \
 	deploy/bin/pi-carplay-supervise deploy/bin/pi-carplay-wireless-setup \
 	deploy/bin/pi-carplay-dashcam deploy/bin/pi-carplay-align-display deploy/bin/pi-carplay-display-profile \
-	deploy/bin/pi-carplay-hotspot \
+	deploy/bin/pi-carplay-hotspot deploy/bin/pi-carplay-link \
 	packaging/pi-carplay-setup \
 	packaging/postinst packaging/build-deb.sh packaging/test-deb.sh raspi-headunit/tests/smoke.sh \
 	tools/pi-carplay-selftest tools/pi-carplay-wireless-check tools/pi-carplay-update
@@ -206,7 +206,8 @@ install: install-udev install-labwc install-openauto-config install-scripts ## I
 
 .PHONY: install-udev
 install-udev: ## udev rule so autoapp can open the phone in accessory mode (sudo)
-	sudo install -m 0644 $(REPO)/deploy/udev/51-android-accessory.rules /etc/udev/rules.d/
+	sudo install -m 0644 $(REPO)/deploy/udev/51-android-accessory.rules \
+		$(REPO)/deploy/udev/52-smartbox-link.rules /etc/udev/rules.d/
 	sudo udevadm control --reload-rules
 	sudo udevadm trigger --subsystem-match=usb
 
@@ -234,7 +235,7 @@ install-scripts: ## Install launchers, the dashcam and the display-profile switc
 		chmod 0755 $(BIN_DIR)/$$f; \
 	done
 	install -m 0755 $(REPO)/deploy/bin/pi-carplay-dashcam $(REPO)/deploy/bin/pi-carplay-align-display \
-		$(REPO)/deploy/bin/pi-carplay-display-profile $(BIN_DIR)/
+		$(REPO)/deploy/bin/pi-carplay-display-profile $(REPO)/deploy/bin/pi-carplay-link $(BIN_DIR)/
 	install -m 0644 $(REPO)/deploy/display/profiles/*.env $(HOME)/.config/pi-carplay/profiles/
 	install -m 0644 $(REPO)/deploy/display/elecrow-1024x600.bin $(HOME)/.local/share/pi-carplay/
 	$(RENDER) $(REPO)/deploy/systemd/pi-carplay-dashcam.service > $(HOME)/.local/share/pi-carplay/pi-carplay-dashcam.service

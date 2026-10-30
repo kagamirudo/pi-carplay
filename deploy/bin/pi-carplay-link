@@ -1,0 +1,94 @@
+#!/bin/bash
+# Choose the phone path from what is plugged in.
+#
+# A smartbox-style USB device (the wireless dongle, or a phone already in
+# Android Auto accessory mode) owns Bluetooth and its own Wi-Fi. The Pi
+# hotspot is turned off so the phone can join that dongle.
+#
+# With no such device, the Pi's own Wi-Fi hotspot is turned on and the Pi
+# Bluetooth adapter is made discoverable for the handoff. The speaker is not
+# disconnected.
+set -u
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  exec sudo -- "$0" "$@"
+fi
+
+CONNECTION=${CONNECTION:-pi-carplay-aa}
+IFACE=${HOTSPOT_IFACE:-wlan0}
+SPEAKER=${SPEAKER_MAC:-B8:69:C2:53:F9:A1}
+DEBOUNCE=${DEBOUNCE:-2}
+
+log() { logger -t pi-carplay-link "$*"; printf '%s\n' "$*"; }
+
+smartbox_present() {
+  lsusb -d 18d1:2d00 2>/dev/null | grep -q . && return 0
+  lsusb -d 2717:ff40 2>/dev/null | grep -q . && return 0
+  return 1
+}
+
+release_phones() {
+  local mac connected
+  while read -r _ mac _; do
+    [[ -n "$mac" && "$mac" != "$SPEAKER" ]] || continue
+    connected=$(bluetoothctl info "$mac" 2>/dev/null | awk '/Connected:/ {print $2; exit}')
+    [[ "$connected" == "yes" ]] || continue
+    bluetoothctl disconnect "$mac" >/dev/null 2>&1 || true
+    log "released $mac so it can pair to the smartbox"
+  done < <(bluetoothctl devices 2>/dev/null || true)
+  bluetoothctl discoverable off >/dev/null 2>&1 || true
+}
+
+disable_pi_hotspot() {
+  local candidate hotspot=""
+  for candidate in \
+    "$(command -v pi-carplay-hotspot 2>/dev/null || true)" \
+    /home/kagamirudo/.local/bin/pi-carplay-hotspot \
+    /usr/bin/pi-carplay-hotspot
+  do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      hotspot=$candidate
+      break
+    fi
+  done
+  if [[ -n "$hotspot" ]]; then
+    "$hotspot" stop || true
+  fi
+  nmcli connection down "$CONNECTION" >/dev/null 2>&1 || true
+}
+
+enable_pi_hotspot() {
+  nmcli device set "$IFACE" managed yes >/dev/null 2>&1 || true
+  nmcli connection modify "$CONNECTION" connection.interface-name "$IFACE" >/dev/null 2>&1 || true
+  iw dev "$IFACE" set power_save off >/dev/null 2>&1 || true
+  if nmcli -t -f NAME,DEVICE connection show --active | grep -q "^${CONNECTION}:${IFACE}$"; then
+    log "Pi hotspot already up on $IFACE"
+  else
+    nmcli connection up "$CONNECTION" ifname "$IFACE"
+    log "Pi hotspot on $IFACE"
+  fi
+  bluetoothctl pairable on >/dev/null 2>&1 || true
+  bluetoothctl discoverable on >/dev/null 2>&1 || true
+}
+
+apply() {
+  # A second plug event waits, then looks again, so the dongle's
+  # MTP-to-accessory flip settles on the last check.
+  exec 9>/run/pi-carplay-link.lock
+  flock -w 20 9 || exit 0
+  sleep "$DEBOUNCE"
+  if smartbox_present; then
+    disable_pi_hotspot
+    release_phones
+    log "smartbox USB present, Pi hotspot off"
+  else
+    enable_pi_hotspot
+    log "no smartbox, Pi hotspot on"
+  fi
+}
+
+if [[ "${1:-}" == "--now" ]]; then
+  apply
+else
+  setsid "$0" --now >/dev/null 2>&1 < /dev/null &
+fi

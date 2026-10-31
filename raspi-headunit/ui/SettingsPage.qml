@@ -51,6 +51,49 @@ Flickable {
             }
         }
 
+        Label { text: "Display (shell only)"; color: "#e6b325"; font.pixelSize: 13; font.bold: true; width: parent.width }
+
+        Repeater {
+            model: [
+                { name: "Brightness", lo: -100, hi: 100, get: function() { return shell.displayBrightness }, set: function(v) { shell.setDisplayBrightness(v) } },
+                { name: "Contrast", lo: -100, hi: 100, get: function() { return shell.displayContrast }, set: function(v) { shell.setDisplayContrast(v) } },
+                { name: "Saturation", lo: -100, hi: 100, get: function() { return shell.displaySaturation }, set: function(v) { shell.setDisplaySaturation(v) } },
+                { name: "Hue", lo: -180, hi: 180, get: function() { return shell.displayHue }, set: function(v) { shell.setDisplayHue(v) } }
+            ]
+            delegate: RowLayout {
+                required property var modelData
+                width: column.width
+                spacing: 6
+                Label {
+                    text: modelData.name
+                    color: "#f4f6f2"
+                    font.pixelSize: 13
+                    Layout.preferredWidth: 80
+                }
+                Slider {
+                    Layout.fillWidth: true
+                    from: modelData.lo
+                    to: modelData.hi
+                    stepSize: 1
+                    value: modelData.get()
+                    onMoved: modelData.set(Math.round(value))
+                }
+                Label {
+                    text: modelData.get()
+                    color: "#d5ddd2"
+                    font.pixelSize: 13
+                    horizontalAlignment: Text.AlignRight
+                    Layout.preferredWidth: 34
+                }
+            }
+        }
+
+        ActionButton {
+            width: parent.width
+            text: "Reset display"
+            onClicked: shell.resetDisplayAdjust()
+        }
+
         ActionButton {
             width: parent.width
             text: "Save"

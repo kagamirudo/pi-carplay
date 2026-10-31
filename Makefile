@@ -68,7 +68,7 @@ APT_PACKAGES := \
 	qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools qt6-wayland \
 	qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
 	qml6-module-qtquick-templates qml6-module-qtquick-window qml6-module-qtqml \
-	qml6-module-qtqml-workerscript qml6-module-qtqml-models \
+	qml6-module-qtqml-workerscript qml6-module-qtqml-models qml6-module-qt5compat-graphicaleffects \
 	bluez pulseaudio-utils wlr-randr grim \
 	patchelf shellcheck
 
@@ -195,7 +195,9 @@ coverage: ## Line and branch coverage; fails below COVERAGE_MIN percent of lines
 analyze: ## Static analysis: cppcheck and qmllint
 	cppcheck --enable=warning,performance,portability --std=c++20 --inline-suppr --error-exitcode=1 \
 		--quiet --suppress=missingIncludeSystem --library=qt -I $(HEADUNIT_DIR)/src $(HEADUNIT_DIR)/src
-	$(QMLLINT) --unqualified disable $(HEADUNIT_DIR)/ui/*.qml
+	# --import disable: Debian ships Qt5Compat.GraphicalEffects without its
+	# .qmltypes metadata, so qmllint warns on the (runtime-valid) import.
+	$(QMLLINT) --unqualified disable --import disable $(HEADUNIT_DIR)/ui/*.qml
 
 # ---------------------------------------------------------------- install
 

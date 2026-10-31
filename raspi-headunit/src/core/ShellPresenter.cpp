@@ -327,12 +327,27 @@ void ShellPresenter::saveSettings() {
     emit changed();
 }
 
+void ShellPresenter::setCarMode(bool on) {
+    carMode_ = on;
+    if (on) {
+        openAndroidAuto();
+    }
+    emit changed();
+}
+
 void ShellPresenter::openAndroidAuto() {
     if (resumeCommand_.isEmpty()) {
         return;
     }
     if (!QProcess::startDetached(resumeCommand_.first(), resumeCommand_.mid(1))) {
         Logger::warn("projection", "could not signal autoapp");
+    }
+}
+
+void ShellPresenter::reconnectPhone() {
+    setNotice(QStringLiteral("Reconnecting the phone…"));
+    if (!QProcess::startDetached(QStringLiteral("aa-restart.sh"), QStringList{})) {
+        Logger::warn("projection", "could not run aa-restart.sh");
     }
 }
 

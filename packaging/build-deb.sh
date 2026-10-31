@@ -62,7 +62,7 @@ install -m 0755 "$REPO/deploy/bin/pi-carplay-boot-config" "$REPO/deploy/bin/pi-c
   "$REPO/deploy/bin/pi-carplay-wireless-setup" "$REPO/deploy/bin/pi-carplay-dashcam" \
   "$REPO/deploy/bin/pi-carplay-align-display" "$REPO/deploy/bin/pi-carplay-display-profile" \
   "$REPO/deploy/bin/pi-carplay-hotspot" "$REPO/deploy/bin/pi-carplay-link" \
-  "$REPO/tools/pi-carplay-selftest" \
+  "$REPO/tools/pi-carplay-selftest" "$REPO/tools/pi-carplay-touch-calibrate" \
   "$REPO/tools/pi-carplay-wireless-check" "$REPO/tools/pi-carplay-update" "$STAGE/usr/bin/"
 install -d "$STAGE/usr/share/pi-carplay/profiles"
 install -m 0644 "$REPO/deploy/display/profiles/"*.env "$STAGE/usr/share/pi-carplay/profiles/"

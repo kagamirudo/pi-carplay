@@ -131,7 +131,7 @@ More detail is in [docs/architecture.md](docs/architecture.md).
 | `packaging/` | `.deb` builder, package scripts and Debian copyright file |
 | `.github/workflows/` | Quality pipeline on arm64, nightly soak, tag-triggered releases |
 | `tests/scripts/` | bats tests for the supervisor, launcher and setup scripts |
-| `tools/` | `pi-carplay-selftest`, the on-device health check, `pi-carplay-wireless-check`, and `pi-carplay-update`, the update check ([OTA design](docs/plans/0002-ota-updates.md)) |
+| `tools/` | `pi-carplay-selftest`, the on-device health check, `pi-carplay-wireless-check`, `pi-carplay-update`, the update check ([OTA design](docs/plans/0002-ota-updates.md)), and `pi-carplay-touch-calibrate`, the panel calibrator |
 | `raspi-headunit/` | The head-unit shell: C++20, Qt 6.4, QML, CMake, unit tests |
 | `patches/` | **GPL-3.0** patches for OpenAuto and aasdk, pinned to upstream commits |
 | `deploy/` | Files `make install` puts on the system: udev rule, labwc config, autostart, OpenAuto config, restart script |

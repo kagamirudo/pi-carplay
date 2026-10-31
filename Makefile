@@ -51,7 +51,7 @@ SHELL_SCRIPTS := deploy/bin/aa-restart.sh deploy/bin/pi-carplay-autoapp deploy/b
 	deploy/bin/pi-carplay-hotspot deploy/bin/pi-carplay-link \
 	packaging/pi-carplay-setup \
 	packaging/postinst packaging/build-deb.sh packaging/test-deb.sh raspi-headunit/tests/smoke.sh \
-	tools/pi-carplay-selftest tools/pi-carplay-wireless-check tools/pi-carplay-update
+	tools/pi-carplay-selftest tools/pi-carplay-wireless-check tools/pi-carplay-update tools/pi-carplay-touch-calibrate
 
 # Line coverage of raspi-headunit/src may not drop below this (raise it, never lower it).
 COVERAGE_MIN  ?= 80
@@ -290,6 +290,10 @@ selftest: ## Check this Pi: display, touch, Bluetooth, USB rule, binaries, power
 .PHONY: wireless-check
 wireless-check: ## Check readiness for wireless Android Auto: Bluetooth dongle, 5 GHz hotspot, ports (read-only)
 	$(REPO)/tools/pi-carplay-wireless-check
+
+.PHONY: touch-calibrate
+touch-calibrate: ## Calibrate the touch panel: tap five crosses, write a libinput matrix
+	$(REPO)/tools/pi-carplay-touch-calibrate
 
 .PHONY: wireless-setup
 wireless-setup: ## Prepare wireless Android Auto: firmware, phone adapter, hotspot profile (ARGS=--dry-run to preview)

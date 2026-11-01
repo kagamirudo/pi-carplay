@@ -26,6 +26,7 @@ public:
     bool setSegmentSeconds(int seconds);
     bool setLogLevel(const std::string& level);
     bool setStorageLimitBytes(std::uint64_t bytes);
+    bool setDisplayAdjust(int brightness, int contrast, int hue, int saturation);
     bool saveConfig(const std::filesystem::path& path, std::string* error) const;
 
     PhoneConnectionManager& phones();

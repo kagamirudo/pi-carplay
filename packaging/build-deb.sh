@@ -100,7 +100,7 @@ DEPS=$(for so in $NEEDED; do
 done | cut -d: -f1 | sort -u)
 EXTRA="qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
 qml6-module-qtquick-templates qml6-module-qtquick-window qml6-module-qtqml
-qml6-module-qtqml-workerscript qml6-module-qtqml-models qt6-wayland
+qml6-module-qtqml-workerscript qml6-module-qtqml-models qml6-module-qt5compat-graphicaleffects qt6-wayland
 libqt5multimedia5-plugins bluez pulseaudio-utils wlr-randr udev curl python3"
 # shellcheck disable=SC2086  # split the package lists into words
 DEPENDS=$(printf '%s\n' $DEPS $EXTRA | sort -u | paste -sd, - | sed 's/,/, /g')

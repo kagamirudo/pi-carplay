@@ -59,6 +59,17 @@ bool ApplicationManager::setStorageLimitBytes(std::uint64_t bytes) {
     return true;
 }
 
+bool ApplicationManager::setDisplayAdjust(int brightness, int contrast, int hue, int saturation) {
+    const auto clamp = [](int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); };
+    AppConfig config = configuration_.get();
+    config.display.brightness = clamp(brightness, -100, 100);
+    config.display.contrast = clamp(contrast, -100, 100);
+    config.display.hue = clamp(hue, -180, 180);
+    config.display.saturation = clamp(saturation, -100, 100);
+    configuration_.reset(std::move(config));
+    return true;
+}
+
 bool ApplicationManager::saveConfig(const std::filesystem::path& path, std::string* error) const {
     return configuration_.saveFile(path, error);
 }

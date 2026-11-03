@@ -35,6 +35,8 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
       HEADUNIT_STRESS_TAPS: ${{ inputs.taps || '100000' }}
       HEADUNIT_FUZZ_ITERATIONS: ${{ inputs.fuzz || '2000000' }}
+      # Qt Test has its own watchdog, independent of the CTest timeout.
+      QT_TEST_FUNCTION_TIMEOUT: "9000000"
       ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
     steps:

@@ -22,7 +22,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     container:
       image: debian:bookworm
-      options: --cap-add=SYS_PTRACE
+      # Reap detached helper processes spawned by the UI stress test.
+      options: --init --cap-add=SYS_PTRACE
     timeout-minutes: 180
     strategy:
       fail-fast: false

@@ -44,6 +44,8 @@ private slots:
                              ? qEnvironmentVariableIntValue("HEADUNIT_STRESS_TAPS")
                              : 3000;
         UiFixture ui;
+        // The UI integration test checks the resume helper separately.
+        ui.shell().setResumeCommand({});
         QVERIFY(ui.window());
         QVERIFY(QTest::qWaitForWindowExposed(ui.window()));
         std::mt19937 rng(0xca5);
@@ -82,6 +84,8 @@ private slots:
 
     void rapidPageSwitching() {
         UiFixture ui;
+        // The UI integration test checks the resume helper separately.
+        ui.shell().setResumeCommand({});
         QVERIFY(QTest::qWaitForWindowExposed(ui.window()));
         const QStringList pages = {QStringLiteral("Home"), QStringLiteral("Phone"), QStringLiteral("Cam"),
                                    QStringLiteral("Bluetooth"), QStringLiteral("Wi-Fi"), QStringLiteral("Setup")};

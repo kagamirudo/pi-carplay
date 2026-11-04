@@ -44,7 +44,7 @@ R=$WORK/root
 REQUIRED="opt/pi-carplay/bin/headunit opt/pi-carplay/bin/autoapp opt/pi-carplay/share/openauto.ini
 opt/pi-carplay/share/labwc/autostart opt/pi-carplay/share/labwc/rc.xml lib/udev/rules.d/51-android-accessory.rules \
 lib/udev/rules.d/52-smartbox-link.rules
-usr/bin/pi-carplay-setup usr/bin/pi-carplay-autoapp usr/bin/pi-carplay-restart usr/bin/pi-carplay-boot-config
+usr/bin/aa-restart.sh usr/bin/pi-carplay-setup usr/bin/pi-carplay-autoapp usr/bin/pi-carplay-restart usr/bin/pi-carplay-boot-config
 usr/bin/pi-carplay-supervise usr/bin/pi-carplay-selftest usr/bin/pi-carplay-wireless-check
 usr/bin/pi-carplay-wireless-setup usr/bin/pi-carplay-update usr/bin/pi-carplay-touch-calibrate
 usr/bin/pi-carplay-dashcam usr/bin/pi-carplay-align-display usr/bin/pi-carplay-display-profile \

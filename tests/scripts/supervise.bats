@@ -116,3 +116,18 @@ wait_for() {
   run "$SUPERVISE" onlyname
   [ "$status" -eq 2 ]
 }
+
+@test "concurrent starts launch exactly one child and release the lock on stop" {
+  supervisors=()
+  for _ in $(seq 1 20); do
+    "$SUPERVISE" t sh -c "echo started >> '$WORK/starts'; exec sleep 60" &
+    supervisors+=("$!")
+  done
+  wait_for "[ -s '$WORK/starts' ]"
+  sleep 1
+  [ "$(wc -l < "$WORK/starts")" -eq 1 ]
+  "$SUPERVISE" --stop t
+  for supervisor in "${supervisors[@]}"; do wait "$supervisor"; done
+  "$SUPERVISE" t sh -c "echo restarted > '$WORK/restarted'; exec sleep 60" &
+  wait_for "[ -s '$WORK/restarted' ]"
+}

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevent concurrent supervisors from launching duplicate head-unit or Android Auto processes with a lifetime lock.
+
 ### Added
 
 - **Smartbox switch:** `pi-carplay-link` turns the Pi Wi-Fi hotspot off while a smartbox-style USB device is plugged in, so the phone can use the dongle, and turns the hotspot back on when that device is gone. The speaker stays connected.

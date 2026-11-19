@@ -77,7 +77,7 @@ echo $$ > "$RUN_DIR/$NAME.pid"
 
 child=""
 stopping=0
-# shellcheck disable=SC2317  # runs from the trap below
+# shellcheck disable=SC2317,SC2329  # runs from the trap below
 on_stop() {
   stopping=1
   if [ -n "$child" ]; then

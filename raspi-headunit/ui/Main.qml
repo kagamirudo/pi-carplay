@@ -29,15 +29,28 @@ ApplicationWindow {
         ? ["Home", "Phone", "Cam", "Bluetooth", "Setup"]
         : allPages
 
+    property bool hotspotRequestPending: false
+    function applyHotspotRequest() {
+        if (!hotspotRequestPending || wifi.busy)
+            return
+        hotspotRequestPending = false
+        if (wifi.hotspotActive !== shell.carMode)
+            wifi.setHotspot(shell.carMode)
+    }
+
+    Connections {
+        target: wifi
+        function onStateChanged() { window.applyHotspotRequest() }
+    }
+
     Connections {
         target: shell
-        function onChanged() {
+        function onCarModeChanged() {
             if (shell.carMode && stack.currentIndex === 4) {
                 stack.currentIndex = 0
             }
-            if (wifi.hotspotActive !== shell.carMode) {
-                wifi.setHotspot(shell.carMode)
-            }
+            window.hotspotRequestPending = true
+            window.applyHotspotRequest()
         }
     }
 

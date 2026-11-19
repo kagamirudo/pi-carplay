@@ -93,6 +93,10 @@ public:
     bool hotspotActive() const { return hotspotActive_; }
     QString status() const { return status_; }
 
+    void setBusy(bool value) {
+        busy_ = value;
+        emit stateChanged();
+    }
     void setNetworks(QVariantList n) {
         networks_ = std::move(n);
         emit networksChanged();

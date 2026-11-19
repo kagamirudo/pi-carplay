@@ -33,6 +33,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Changing display settings no longer stops an independently active phone hotspot.
+
 - A corrupt, empty or unreadable `headunit.json` no longer stops the shell from starting. It is moved aside, the shell starts on defaults and the Setup page says so.
 - Deeply nested JSON in the config could overflow the stack; nesting and file size are now limited.
 - Saved settings could be lost if power was cut right after saving; the file is now flushed to disk before it replaces the old one.

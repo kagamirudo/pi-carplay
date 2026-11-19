@@ -328,7 +328,11 @@ void ShellPresenter::saveSettings() {
 }
 
 void ShellPresenter::setCarMode(bool on) {
+    if (carMode_ == on) {
+        return;
+    }
     carMode_ = on;
+    emit carModeChanged();
     if (on) {
         openAndroidAuto();
     }

@@ -31,7 +31,7 @@ ApplicationWindow {
 
     Connections {
         target: shell
-        function onChanged() {
+        function onCarModeChanged() {
             if (shell.carMode && stack.currentIndex === 4) {
                 stack.currentIndex = 0
             }

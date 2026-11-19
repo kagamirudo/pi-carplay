@@ -69,6 +69,13 @@ mkdir -p "$STATE_DIR" "$RUN_DIR"
 LOG=$STATE_DIR/$NAME.log
 CRASHES=$STATE_DIR/crashes.log
 
+# Keep the lock for the supervisor lifetime. Child commands must not inherit it.
+exec 9>"$RUN_DIR/$NAME.lock"
+if ! flock -n 9; then
+  echo "pi-carplay-supervise: $NAME is already supervised" >&2
+  exit 0
+fi
+
 if pid=$(running_pid "$NAME"); then
   echo "pi-carplay-supervise: $NAME is already supervised by $pid" >&2
   exit 0
@@ -127,7 +134,7 @@ while [ "$stopping" -eq 0 ]; do
   fi
   rotate "$LOG"
   started=$(date +%s)
-  "$@" >> "$LOG" 2>&1 &
+  "$@" 9>&- >> "$LOG" 2>&1 &
   child=$!
   wait "$child"
   code=$?
@@ -143,7 +150,7 @@ while [ "$stopping" -eq 0 ]; do
     delay=1
   fi
   echo "$(date -u +%FT%TZ) $NAME $how; restarting in ${delay}s" >> "$LOG"
-  sleep "$delay" &
+  sleep "$delay" 9>&- &
   wait $!
   delay=$(( delay * 2 > MAX_DELAY ? MAX_DELAY : delay * 2 ))
 done

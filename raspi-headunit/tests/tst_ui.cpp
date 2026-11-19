@@ -92,6 +92,20 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(ui_->resumeMarker()), 5000);
     }
 
+    void pendingCarModeRequestUsesLatestState() {
+        ui_->shell().setResumeCommand({});
+        ui_->wifi.setBusy(true);
+        ui_->shell().setCarMode(true);
+        QVERIFY(ui_->wifi.calls.isEmpty());
+        ui_->wifi.setBusy(false);
+        QVERIFY(ui_->wifi.hotspotActive());
+        ui_->wifi.setBusy(true);
+        ui_->shell().setCarMode(false);
+        ui_->shell().setCarMode(true);
+        ui_->wifi.setBusy(false);
+        QCOMPARE(ui_->wifi.calls, QStringList{QStringLiteral("hotspot on")});
+    }
+
     void displayChangePreservesActiveHotspot() {
         ui_->wifi.setHotspot(true);
         ui_->wifi.calls.clear();

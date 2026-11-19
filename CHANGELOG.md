@@ -33,7 +33,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
-- Changing display settings no longer stops an independently active phone hotspot.
+- Preserve active hotspots during display adjustments and apply the latest car-mode setting after pending Wi-Fi actions.
+- Install the reconnect command used by the phone button in Debian packages.
+- Prevent duplicate supervisors and release their startup lock when stopped during backoff.
 
 - A corrupt, empty or unreadable `headunit.json` no longer stops the shell from starting. It is moved aside, the shell starts on defaults and the Setup page says so.
 - Deeply nested JSON in the config could overflow the stack; nesting and file size are now limited.

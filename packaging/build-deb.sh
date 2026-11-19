@@ -71,6 +71,8 @@ install -m 0644 "$REPO/deploy/display/elecrow-1024x600.bin" \
 install -m 0755 "$REPO/packaging/pi-carplay-setup" "$STAGE/usr/bin/"
 chmod 0755 "$STAGE/usr/bin/pi-carplay-autoapp" "$STAGE/usr/bin/pi-carplay-restart"
 
+ln -s pi-carplay-restart "$STAGE/usr/bin/aa-restart.sh"
+
 # Config templates and system files
 render "$REPO/deploy/labwc/autostart" > "$STAGE/$PREFIX/share/labwc/autostart"
 install -m 0644 "$REPO/deploy/labwc/rc.xml" "$STAGE/$PREFIX/share/labwc/rc.xml"

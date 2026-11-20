@@ -40,7 +40,7 @@ class ShellPresenter : public QObject {
     Q_PROPERTY(int displayHue READ displayHue NOTIFY changed)
     Q_PROPERTY(int displaySaturation READ displaySaturation NOTIFY changed)
     Q_PROPERTY(QString saveResult READ saveResult NOTIFY changed)
-    Q_PROPERTY(bool carMode READ carMode NOTIFY changed)
+    Q_PROPERTY(bool carMode READ carMode NOTIFY carModeChanged)
     Q_PROPERTY(bool previewOpen READ previewOpen NOTIFY changed)
     Q_PROPERTY(QString version READ version CONSTANT)
 
@@ -103,6 +103,7 @@ public:
     void setNotice(const QString& text);
 
 signals:
+    void carModeChanged();
     void changed();
 
 private:

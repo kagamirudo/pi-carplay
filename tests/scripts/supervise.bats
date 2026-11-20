@@ -116,3 +116,26 @@ wait_for() {
   run "$SUPERVISE" onlyname
   [ "$status" -eq 2 ]
 }
+
+@test "concurrent starts launch exactly one child and release the lock on stop" {
+  supervisors=()
+  for _ in $(seq 1 20); do
+    "$SUPERVISE" t sh -c "echo started >> '$WORK/starts'; exec sleep 60" &
+    supervisors+=("$!")
+  done
+  wait_for "[ -s '$WORK/starts' ]"
+  sleep 1
+  [ "$(wc -l < "$WORK/starts")" -eq 1 ]
+  "$SUPERVISE" --stop t
+  for supervisor in "${supervisors[@]}"; do wait "$supervisor"; done
+  "$SUPERVISE" t sh -c "echo restarted > '$WORK/restarted'; exec sleep 60" &
+  wait_for "[ -s '$WORK/restarted' ]"
+}
+
+@test "stopping during backoff releases the startup lock immediately" {
+  export PI_CARPLAY_MAX_DELAY=30
+  "$SUPERVISE" t false &
+  wait_for "grep -q 'restarting in 4s' '$PI_CARPLAY_STATE_DIR/t.log' 2>/dev/null"
+  "$SUPERVISE" --stop t
+  flock -n "$PI_CARPLAY_RUN_DIR/t.lock" true
+}
